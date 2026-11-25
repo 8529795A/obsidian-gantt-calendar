@@ -26,7 +26,7 @@ import {
 	pxToMinutes,
 	snapMinutes,
 	formatMinutes,
-	DAY_PX,
+	HOUR_PX,
 	MIN_DURATION_MIN,
 	MINUTES_PER_DAY,
 } from './timelineModel';
@@ -72,6 +72,14 @@ export interface DayTimelineCanvasProps {
 	tasks: GCTask[];
 	/** 写回成功后的刷新回调 */
 	refresh: () => void;
+	/**
+	 * 只渲染 [startHour, endHour) 这一段小时（默认整天 0-24）。
+	 * 用于日视图左右分栏（左 0-12 / 右 12-24）：
+	 * 画布高度、刻度、指针换算、拖拽/创建/resize 全部以该窗口为坐标系，
+	 * 跨窗口的任务块按窗口裁剪并加延续标记。
+	 */
+	startHour?: number;
+	endHour?: number;
 }
 
 /**
@@ -79,9 +87,23 @@ export interface DayTimelineCanvasProps {
  * 与周视图同语义：分钟级定位、点击/拖选空白创建、边缘拖拽改起止时间、
  * 块边缘落点的 HTML5 拖放 + 触屏长按拖动、落点预览、当前时间线。
  */
-export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTimelineCanvasProps): JSX.Element {
+export function DayTimelineCanvas({ day, model, config, tasks, refresh, startHour = 0, endHour = 24 }: DayTimelineCanvasProps): JSX.Element {
 	const plugin = usePlugin();
 	const app = useApp();
+
+	// ===== 小时窗口（日视图左右分栏：左 0-12 / 右 12-24） =====
+	// 窗口内的像素坐标以窗口起点为 0，所有指针换算/块定位都减去 windowStartMin
+	const windowStartMin = Math.max(0, Math.min(MINUTES_PER_DAY, Math.round(startHour * 60)));
+	const windowEndMin = Math.max(windowStartMin, Math.min(MINUTES_PER_DAY, Math.round(endHour * 60)));
+	const windowMinutes = Math.max(1, windowEndMin - windowStartMin);
+	const windowPx = (windowMinutes / 60) * HOUR_PX;
+	/** 是否为分栏窗口（非整天）：仅此时才提示「跨栏块用编辑面板改时间」 */
+	const isSplitWindow = windowStartMin > 0 || windowEndMin < MINUTES_PER_DAY;
+
+	/** 绝对分钟 → 窗口内像素 */
+	const winMinutesToPx = useCallback((minutes: number): number => {
+		return minutesToPx(minutes - windowStartMin);
+	}, [windowStartMin]);
 
 	const startField = plugin.settings.ganttStartField || 'startDate';
 	const endField = plugin.settings.ganttEndField || 'dueDate';
@@ -161,13 +183,13 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 		void (async () => {
 			const ok = await persistTaskUpdate(block.task, updates, precision, 'views.dayView.updateTimeFailed');
 			if (!ok) {
-				blockEl.style.top = `${minutesToPx(seg.startMin)}px`;
+				blockEl.style.top = `${winMinutesToPx(seg.startMin)}px`;
 				blockEl.style.height = `${minutesToPx(seg.endMin - seg.startMin)}px`;
 			}
 		})();
-	}, [atMinutes, startField, endField, persistTaskUpdate]);
+	}, [atMinutes, startField, endField, persistTaskUpdate, winMinutesToPx]);
 
-	const beginResize = useBlockResize(commitResize);
+	const beginResize = useBlockResize(commitResize, { windowStartMin, windowEndMin });
 
 	// ===== 整块拖放落点（minutes = 块上边缘吸附时刻） =====
 	const commitBlockMove = useCallback((task: GCTask, minutes: number): void => {
@@ -212,9 +234,12 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 
 	// 触屏整块拖动（长按 500ms 起拖；单日画布 dayIndex 恒为 0）
 	const beginBlockTouchPress = useCanvasTouchDrag({
-		onCommit: (task, _dayIndex, minutes) => commitBlockMove(task, minutes),
+		// 日视图是时间轴画布，minutes 必为数值（null 仅在列表式布局出现，此处兜底为原起点）
+		onCommit: (task, _dayIndex, minutes) => commitBlockMove(task, minutes ?? 0),
 		setPreview: (prev) => setDropPreview(prev && { startMin: prev.startMin, endMin: prev.endMin }),
 		columnSelector: `.${DayCanvasClasses.elements.canvas}`,
+		// 分栏画布的落点换算必须加回窗口起点，否则右轴拖动会被算成左轴时刻
+		windowStartMin,
 	});
 
 	// ===== 空白快速创建（单击 = 前向 1 小时区间，拖拽 = 选区） =====
@@ -249,24 +274,27 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 
 	const minutesFromEvent = useCallback((clientY: number): number => {
 		const canvas = canvasRef.current;
-		if (!canvas) return 0;
+		if (!canvas) return windowStartMin;
 		const rect = canvas.getBoundingClientRect();
-		return snapMinutes(pxToMinutes(clientY - rect.top), false);
-	}, []);
+		// 窗口内像素 → 窗口内分钟 → 加回窗口起点得到绝对分钟
+		return snapMinutes(pxToMinutes(clientY - rect.top) + windowStartMin, false);
+	}, [windowStartMin]);
 
 	const showGhost = useCallback((startMin: number, endMin: number, dragging: boolean): void => {
 		const ghost = ghostRef.current;
 		const label = ghostLabelRef.current;
 		if (!ghost) return;
-		const clampedEnd = Math.min(Math.max(endMin, startMin + 1), MINUTES_PER_DAY);
+		// 钳到本窗口：预览不越出当前分栏
+		const clampedStart = Math.max(startMin, windowStartMin);
+		const clampedEnd = Math.min(Math.max(endMin, clampedStart + 1), windowEndMin);
 		setCssProps(ghost, { display: 'block' });
-		ghost.style.top = `${minutesToPx(startMin)}px`;
-		ghost.style.height = `${minutesToPx(clampedEnd - startMin)}px`;
+		ghost.style.top = `${winMinutesToPx(clampedStart)}px`;
+		ghost.style.height = `${minutesToPx(clampedEnd - clampedStart)}px`;
 		ghost.classList.toggle(DayCanvasClasses.modifiers.ghostDragging, dragging);
 		if (label) label.textContent = dragging
-			? `${formatMinutes(startMin)} – ${formatMinutes(clampedEnd)}`
-			: formatMinutes(startMin);
-	}, []);
+			? `${formatMinutes(clampedStart)} – ${formatMinutes(clampedEnd)}`
+			: formatMinutes(clampedStart);
+	}, [winMinutesToPx, windowStartMin, windowEndMin]);
 
 	const hideGhost = useCallback((): void => {
 		const ghost = ghostRef.current;
@@ -424,14 +452,14 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 			setDropLine(null);
 			const canvas = canvasRef.current;
 			if (!canvas) return;
-			const topMin = snapMinutes(pxToMinutes(e.clientY - meta.offsetPx - canvas.getBoundingClientRect().top), false);
-			const endMin = Math.min(topMin + meta.durationMin, MINUTES_PER_DAY);
+			const topMin = snapMinutes(pxToMinutes(e.clientY - meta.offsetPx - canvas.getBoundingClientRect().top) + windowStartMin, false);
+			const endMin = Math.min(topMin + meta.durationMin, windowEndMin);
 			setDropPreview((prev) => (prev && prev.startMin === topMin ? prev : { startMin: topMin, endMin }));
 			return;
 		}
 		setDropPreview(null);
 		setDropLine(minutesFromEvent(e.clientY));
-	}, [minutesFromEvent, setDropLine, setDropPreview]);
+	}, [minutesFromEvent, setDropLine, setDropPreview, windowStartMin, windowEndMin]);
 
 	const handleDragLeave = useCallback((e: ReactDragEvent) => {
 		const related = e.relatedTarget as Node | null;
@@ -465,42 +493,53 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 		return now.getFullYear() === d0.getFullYear() && now.getMonth() === d0.getMonth() && now.getDate() === d0.getDate();
 	}, [day]);
 
-	const [nowTop, setNowTop] = useState<number | null>(null);
+	const [nowTick, setNowTick] = useState(0);
 	useEffect(() => {
-		if (!isToday) {
-			setNowTop(null);
-			return;
-		}
-		const update = () => {
-			const now = new Date();
-			setNowTop(minutesToPx(now.getHours() * 60 + now.getMinutes()));
-		};
-		update();
-		const timer = window.setInterval(update, 30_000);
+		if (!isToday) return;
+		const timer = window.setInterval(() => setNowTick((n) => n + 1), 30_000);
 		return () => window.clearInterval(timer);
-	}, [isToday, model]);
+	}, [isToday]);
+
+	// 当前时间线：仅当「今天」且当前时刻落在本窗口内才显示（nowTick 驱动 30s 刷新）
+	const nowTop = useMemo(() => {
+		if (!isToday) return null;
+		const now = new Date();
+		const nowMin = now.getHours() * 60 + now.getMinutes();
+		if (nowMin < windowStartMin || nowMin > windowEndMin) return null;
+		return winMinutesToPx(nowMin);
+	}, [isToday, model, nowTick, windowStartMin, windowEndMin, winMinutesToPx]);
 
 	const canvasCls = [
 		DayCanvasClasses.elements.canvas,
 		dragOver ? DayCanvasClasses.modifiers.canvasDragOver : '',
 	].filter(Boolean).join(' ');
 
+	// 窗口内的小时刻度
+	const hourMarks = useMemo(() => {
+		const marks: number[] = [];
+		for (let h = Math.floor(windowStartMin / 60); h < Math.ceil(windowEndMin / 60); h++) {
+			if (h * 60 >= windowStartMin && h * 60 <= windowEndMin) marks.push(h);
+		}
+		return marks;
+	}, [windowStartMin, windowEndMin]);
+
 	return (
-		<div className={DayCanvasClasses.elements.body}>
-			{/* 时间沟槽 */}
-			<div className={DayCanvasClasses.elements.gutter}>
-				{Array.from({ length: 24 }, (_, hour) => (
-					<div key={hour} className={DayCanvasClasses.elements.timeLabel}>
-						{`${String(hour).padStart(2, '0')}:00`}
-					</div>
-				))}
-			</div>
-			{/* 连续画布 */}
-			<div
+		<div className={DayCanvasClasses.block}>
+			<div className={DayCanvasClasses.elements.body}>
+				{/* 时间沟槽 */}
+				<div className={DayCanvasClasses.elements.gutter}>
+					{hourMarks.map((hour) => (
+						<div key={hour} className={DayCanvasClasses.elements.timeLabel}>
+							{`${String(hour).padStart(2, '0')}:00`}
+						</div>
+					))}
+				</div>
+				{/* 连续画布（高度 = 本窗口时长） */}
+				<div
 				ref={canvasRef}
 				data-day-idx={0}
 				className={canvasCls}
-				style={{ height: `${DAY_PX}px`, '--gc-tl-hour-h': `${DAY_PX / 24}px` } as CSSProperties}
+				style={{ height: `${windowPx}px`, '--gc-tl-hour-h': `${HOUR_PX}px` } as CSSProperties}
 				onPointerMove={handlePointerMove}
 				onPointerLeave={handlePointerLeave}
 				onPointerDown={handlePointerDown}
@@ -509,16 +548,31 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 				onDrop={handleDrop}
 			>
 				{model.blocks.map(({ block, seg }) => {
-					const durationMin = seg.endMin - seg.startMin;
+					// 块与窗口求交：完全在窗口外则跳过
+					if (seg.endMin <= windowStartMin || seg.startMin >= windowEndMin) return null;
+					const clippedStart = Math.max(seg.startMin, windowStartMin);
+					const clippedEnd = Math.min(seg.endMin, windowEndMin);
+					const durationMin = clippedEnd - clippedStart;
+					if (durationMin <= 0) return null;
+					const continuesBefore = seg.continuesBefore || seg.startMin < windowStartMin;
+					const continuesAfter = seg.continuesAfter || seg.endMin > windowEndMin;
 					const resizable = !isVirtualTask(block.task);
+					/**
+					 * 真实边缘 vs 裁剪假边缘：
+					 * 跨窗口的块会在分栏边界被裁掉一截，那个边缘是「显示裁剪线」而非任务的真实起止。
+					 * 拖假边缘会写出错误时间（它不代表任何真实时刻），因此只允许拖真实边缘。
+					 * 需要改跨 12:00 的块 → 用编辑面板手动改（画布下方已有灰字说明）。
+					 */
+					const realTopEdge = !continuesBefore;
+					const realBottomEdge = !continuesAfter;
 					const cls = [
 						DayCanvasClasses.elements.block,
-						seg.continuesBefore ? DayCanvasClasses.modifiers.blockContinuesBefore : '',
-						seg.continuesAfter ? DayCanvasClasses.modifiers.blockContinuesAfter : '',
+						continuesBefore ? DayCanvasClasses.modifiers.blockContinuesBefore : '',
+						continuesAfter ? DayCanvasClasses.modifiers.blockContinuesAfter : '',
 						seg.stackedIndex > 0 ? DayCanvasClasses.modifiers.blockStacked : '',
 					].filter(Boolean).join(' ');
 					const style: CSSProperties = {
-						top: `${minutesToPx(seg.startMin)}px`,
+						top: `${winMinutesToPx(clippedStart)}px`,
 						height: `${minutesToPx(durationMin)}px`,
 						left: `calc(${(seg.lane / seg.laneCount) * 100}% + ${(seg.stackedIndex > 0 ? seg.stackedIndex * 3 : 0) + 1}px)`,
 						width: `calc(${100 / seg.laneCount}% - 2px)`,
@@ -544,11 +598,11 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 						>
 							{durationMin >= 30 ? (
 								<span className={DayCanvasClasses.elements.blockTime}>
-									{`${formatMinutes(seg.startMin)} – ${formatMinutes(seg.endMin)}`}
+									{`${formatMinutes(clippedStart)} – ${formatMinutes(clippedEnd)}`}
 								</span>
 							) : null}
 							<TaskCard task={block.task} config={config} disableLongPressMenu />
-							{!seg.continuesBefore && resizable ? (
+							{realTopEdge && resizable ? (
 								<div
 									className={`${DayCanvasClasses.elements.handle} ${DayCanvasClasses.modifiers.handleTop}`}
 									onPointerDown={(e) => {
@@ -559,7 +613,7 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 									}}
 								/>
 							) : null}
-							{!seg.continuesAfter && resizable ? (
+							{realBottomEdge && resizable ? (
 								<div
 									className={`${DayCanvasClasses.elements.handle} ${DayCanvasClasses.modifiers.handleBottom}`}
 									onPointerDown={(e) => {
@@ -575,13 +629,13 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 				})}
 				{/* 拖放吸附指示线（外部来源） */}
 				{dropLine !== null ? (
-					<div className={DayCanvasClasses.elements.dropLine} style={{ top: `${minutesToPx(dropLine)}px` }} />
+					<div className={DayCanvasClasses.elements.dropLine} style={{ top: `${winMinutesToPx(dropLine)}px` }} />
 				) : null}
 				{/* 整块拖动落点预览 */}
 				{dropPreview ? (
 					<div
 						className={DayCanvasClasses.elements.dropPreview}
-						style={{ top: `${minutesToPx(dropPreview.startMin)}px`, height: `${minutesToPx(dropPreview.endMin - dropPreview.startMin)}px` }}
+						style={{ top: `${winMinutesToPx(dropPreview.startMin)}px`, height: `${minutesToPx(dropPreview.endMin - dropPreview.startMin)}px` }}
 					>
 						<span className={DayCanvasClasses.elements.ghostLabel}>
 							{`${formatMinutes(dropPreview.startMin)} – ${formatMinutes(dropPreview.endMin)}`}
@@ -598,6 +652,13 @@ export function DayTimelineCanvas({ day, model, config, tasks, refresh }: DayTim
 					<span className={DayCanvasClasses.elements.ghostPlus}><Icon icon="plus" /></span>
 				</div>
 			</div>
+			</div>
+			{/* 分栏模式（非整天窗口）才需要说明：跨 12:00 的块被裁切成两段 */}
+			{isSplitWindow ? (
+				<div className={DayCanvasClasses.elements.hint}>
+					{i18n.t('views.dayView.splitCanvasHint')}
+				</div>
+			) : null}
 		</div>
 	);
 }

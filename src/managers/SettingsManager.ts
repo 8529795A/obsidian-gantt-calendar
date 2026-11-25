@@ -7,7 +7,7 @@
 import type GanttCalendarPlugin from '../../main';
 import { DEFAULT_SETTINGS } from '../settings/constants';
 import type { GanttCalendarSettings } from '../settings/types';
-import { ThemeColors, deleteLegacyColors } from '../tasks/taskStatus';
+import { ThemeColors, deleteLegacyColors, DEFAULT_TASK_STATUSES } from '../tasks/taskStatus';
 import { setTimezoneOffset } from '../dateUtils/timezone';
 import { mergeViewFilters } from '../ui/store/calendarStore';
 import { readLegacyViewFilters } from '../utils/legacyViewFilters';
@@ -40,6 +40,12 @@ export class SettingsManager {
 
 		// 迁移：将非核心默认状态降级为自定义状态
 		await this.migratePresetStatuses(settings);
+
+		// 迁移：移除「待办」「已完成」（状态已降级为纯颜色标签）
+		await this.migrateRemoveCompletionStatuses(settings);
+
+		// 迁移：把「已取消」的历史灰色改为原「已完成」的绿色
+		await this.migrateCanceledStatusColor(settings);
 
 		// 视图筛选偏好归一化 + 旧 localStorage 键一次性导入
 		await this.migrateViewFilters(settings);
@@ -92,6 +98,52 @@ export class SettingsManager {
 		const legacy = readLegacyViewFilters();
 		if (!legacy) return;
 		settings.viewFilters = mergeViewFilters(legacy);
+		await this.plugin.saveData(settings);
+	}
+
+	/**
+	 * 迁移：移除与完成语义绑定的「待办」「已完成」状态
+	 *
+	 * 2026-11-23 重构后任务状态降级为纯颜色标签，`todo`/`done` 不再有存在意义。
+	 * 旧 data.json 里若仍存有这两项，会让编辑面板出现无意义按钮，故主动剔除。
+	 *
+	 * 注意：只删配置项，不动笔记内容——笔记里的 `[ ]` / `[x]` 仍会被解析，
+	 * 但会因查不到对应状态而回退成默认状态色（不会丢任务）。
+	 */
+	private async migrateRemoveCompletionStatuses(settings: GanttCalendarSettings): Promise<void> {
+		const obsolete = ['todo', 'done'];
+		const before = settings.taskStatuses.length;
+		settings.taskStatuses = settings.taskStatuses.filter(
+			(s) => !obsolete.includes(s.key)
+		);
+		// 全部删空时补回默认列表，避免编辑面板没有任何状态可选
+		if (settings.taskStatuses.length === 0) {
+			settings.taskStatuses = DEFAULT_TASK_STATUSES.map((s) => ({ ...s }));
+		}
+		if (settings.taskStatuses.length !== before) {
+			await this.plugin.saveData(settings);
+		}
+	}
+
+	/**
+	 * 迁移：「已取消」状态由灰色改为原「已完成」的绿色
+	 *
+	 * 2026-11-23 用户要求把「已取消」的灰色改成原「已完成」的绿色。
+	 * `DEFAULT_TASK_STATUSES` 已更新，但用户旧 data.json 里持久化的灰色会覆盖默认值，
+	 * 因此这里把仍为历史灰色的「已取消」同步更新为绿色。
+	 *
+	 * 只更新仍保持历史默认灰色的项，避免覆盖用户自行改过的颜色。
+	 */
+	private async migrateCanceledStatusColor(settings: GanttCalendarSettings): Promise<void> {
+		const LEGACY_GRAY = '#d9d9d9';
+		const status = settings.taskStatuses.find((s) => s.key === 'canceled');
+		if (!status) return;
+
+		const lightBg = status.lightColors?.backgroundColor?.toLowerCase();
+		if (lightBg !== LEGACY_GRAY) return;
+
+		status.lightColors = { backgroundColor: '#52c41a', textColor: '#FFFFFF' };
+		status.darkColors = { backgroundColor: '#3c8524', textColor: '#e6e6e6' };
 		await this.plugin.saveData(settings);
 	}
 

@@ -20,14 +20,6 @@
     "none": "无",
     "noContent": "无内容",
     "fileNotFound": "文件未找到：{{path}}",
-    "priority": {
-      "highest": "最高",
-      "high": "高",
-      "medium": "中",
-      "normal": "普通",
-      "low": "低",
-      "lowest": "最低"
-    },
     "weekdays": {
       "mon": "周一",
       "tue": "周二",
@@ -291,18 +283,6 @@
           "description": "在 Daily Note 中添加新任务时的目标标题（留空则添加到文件末尾）",
           "placeholder": "例如：## 工作任务"
         },
-        "defaultPriority": {
-          "name": "默认任务优先级",
-          "description": "创建新任务时的默认优先级",
-          "options": {
-            "highest": "🔺 最高",
-            "high": "⏫ 高",
-            "medium": "🔼 中",
-            "low": "🔽 低",
-            "lowest": "⏬ 最低",
-            "normal": "无"
-          }
-        },
         "recurringLimit": {
           "name": "周期任务实例显示数量",
           "description": "在周视图/月视图中，每个周期任务最多显示的未来虚拟实例数量。设置为 0 则不显示虚拟实例。"
@@ -434,7 +414,6 @@
       "chips": {
         "checkbox": "复选框",
         "tags": "标签",
-        "priority": "优先级",
         "extraContent": "附加内容"
       },
       "views": {
@@ -871,8 +850,8 @@
     },
     "createTask": {
       "title": "创建新任务",
-      "descriptionLabel": "任务描述 *",
-      "descriptionPlaceholder": "输入任务描述...",
+      "descriptionLabel": "任务标题 *",
+      "descriptionPlaceholder": "输入任务标题...",
       "submitHint": "按 Enter 键可快捷提交",
       "errorEmptyDescription": "请输入任务描述",
       "errorDateOrder": "创建日期不能晚于截止日期",
@@ -927,8 +906,11 @@
     },
     "editTask": {
       "title": "编辑任务",
-      "descriptionLabel": "任务描述",
-      "priorityLabel": "优先级",
+      "descriptionLabel": "任务标题",
+      "detailsLabel": "任务详情",
+      "detailsHint": "按 Obsidian 原样书写，==高亮==、Tab 缩进、列表都会保留；保存后整体缩进为任务子内容",
+      "detailsPlaceholder": "补充说明、链接、清单…（可留空）",
+      "statusLabel": "任务状态",
       "recurrenceLabel": "重复设置",
       "datesLabel": "日期设置",
       "submitHint": "按 Enter 键可快捷提交",
@@ -1004,7 +986,6 @@
       "header": "排序方式 (点击切换)",
       "options": {
         "dueDate": "截止日期",
-        "priority": "优先级",
         "status": "状态",
         "tags": "标签",
         "description": "字母排序",
@@ -1162,15 +1143,8 @@
     "editTask": "编辑任务",
     "createNote": "创建任务笔记:同名",
     "createNoteAlias": "创建任务笔记:别名",
-    "priority": {
-      "highest": "最高",
-      "high": "高",
-      "medium": "中",
-      "normal": "普通",
-      "low": "低",
-      "lowest": "最低"
-    },
     "statusImportant": "🔴 重要",
+    "statusLabel": "任务状态",
     "statusQuestion": "🟠 有疑问",
     "postpone": {
       "days1": "延期 1 天",
@@ -1198,8 +1172,6 @@
       "postponeFailed": "延期失败",
       "restored": "任务已恢复",
       "restoreFailed": "恢复任务失败",
-      "priorityUpdated": "优先级已更新",
-      "priorityUpdateFailed": "更新优先级失败",
       "statusUpdated": "任务状态已更新为：{{label}}",
       "statusUpdateFailed": "更新任务状态失败",
       "cancel": {
@@ -1322,7 +1294,8 @@
         "五",
         "六",
         "日"
-      ]
+      ],
+      "taskCountTip": "当天共 {{count}} 个任务"
     },
     "weekView": {
       "weekdays": [
@@ -1347,7 +1320,8 @@
       "updateTaskFailed": "更新任务失败",
       "updateDateFailed": "更新任务日期失败",
       "switchToPreview": "切换到预览模式",
-      "switchToEdit": "切换到编辑模式"
+      "switchToEdit": "切换到编辑模式",
+      "splitCanvasHint": "提示：跨 12:00 的任务块在左右两栏各显示一部分，其被分栏裁切的边缘不能拖动，请用编辑面板修改时间。"
     },
     "taskView": {
       "loading": "加载中...",
@@ -1379,22 +1353,11 @@
       "noMatchingTasks": "没有匹配的任务",
       "filterBar": {
         "statusFilter": "状态筛选",
-        "priorityFilter": "优先级筛选",
         "tagFilter": "标签筛选",
         "sort": "排序",
         "dateFilter": "日期筛选"
       },
-      "priority": {
-        "all": "全部",
-        "highest": "最高",
-        "high": "高",
-        "medium": "中",
-        "normal": "普通",
-        "low": "低",
-        "lowest": "最低"
-      },
       "sortOptions": {
-        "byPriority": "按优先级",
         "byDueDate": "按截止日期",
         "byStartDate": "按开始日期",
         "ascending": "升序",
@@ -1461,7 +1424,6 @@
     }
   },
   "taskCard": {
-    "priority": "优先级",
     "due": "截止",
     "created": "创建",
     "start": "开始",
@@ -1470,7 +1432,8 @@
     "cancelled": "取消",
     "repeat": "重复",
     "emptyValue": "(空)",
-    "fileLocation": "位置"
+    "fileLocation": "位置",
+    "detailsMore": "…还有 {{count}} 行"
   },
   "gantt": {
     "taskInfoIncomplete": "任务信息不完整",

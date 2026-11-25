@@ -15,7 +15,13 @@ import { i18n } from '../i18n/i18n';
 /**
  * 默认任务状态类型（不可删除）
  */
-export type DefaultTaskStatusType = 'todo' | 'done';
+/**
+ * 默认状态类型
+ *
+ * 2026-11-23 重构：状态已无"内置/自定义"之分，全部平等可删。
+ * 保留此类型仅为兼容既有签名，实际等同 string。
+ */
+export type DefaultTaskStatusType = string;
 
 /**
  * 任务状态类型（包括用户自定义）
@@ -102,49 +108,16 @@ export function deleteLegacyColors(status: TaskStatus): void {
 // ==================== 默认状态配置 ====================
 
 /**
- * 默认任务状态配置（不可删除）
+ * 默认任务状态配置
  *
- * 仅包含待办和已完成两种核心状态。
+ * 2026-11-23 重构：任务状态已降级为纯颜色标签，「待办」「已完成」两个
+ * 与完成语义绑定的状态从默认列表移除，改为 5 个纯颜色状态。
+ *
+ * 注意：这 5 个同时充当「设置未就绪 / 首次安装」时的兜底默认值，
+ * 因此这里必须是完整的可用状态集，不能只放核心项——否则编辑面板
+ * 在 settings 为空时会退化成只有 2 个按钮。
  */
 export const DEFAULT_TASK_STATUSES: TaskStatus[] = [
-    {
-        key: 'todo',
-        symbol: ' ',
-        name: i18n.t('taskStatus.todo'),
-        description: i18n.t('taskStatus.todoDescription'),
-        lightColors: {
-            backgroundColor: '#FFFFFF',
-            textColor: '#333333',
-        },
-        darkColors: {
-            backgroundColor: '#2d333b',
-            textColor: '#adbac7',
-        },
-        isDefault: true,
-    },
-    {
-        key: 'done',
-        symbol: 'x',
-        name: i18n.t('taskStatus.done'),
-        description: i18n.t('taskStatus.doneDescription'),
-        lightColors: {
-            backgroundColor: '#52c41a',
-            textColor: '#FFFFFF',
-        },
-        darkColors: {
-            backgroundColor: '#3c8524',
-            textColor: '#e6e6e6',
-        },
-        isDefault: true,
-    },
-];
-
-/**
- * 预设自定义状态
- *
- * 初始安装时作为自定义状态提供，用户可修改或删除。
- */
-export const PRESET_CUSTOM_STATUSES: TaskStatus[] = [
     {
         key: 'important',
         symbol: '!',
@@ -165,13 +138,14 @@ export const PRESET_CUSTOM_STATUSES: TaskStatus[] = [
         symbol: '-',
         name: i18n.t('taskStatus.canceled'),
         description: i18n.t('taskStatus.canceledDescription'),
+        // 2026-11-23：用户要求「已取消」由灰色改为原「已完成」的绿色。
         lightColors: {
-            backgroundColor: '#d9d9d9',
-            textColor: '#666666',
+            backgroundColor: '#52c41a',
+            textColor: '#FFFFFF',
         },
         darkColors: {
-            backgroundColor: '#4a525c',
-            textColor: '#8b949e',
+            backgroundColor: '#3c8524',
+            textColor: '#e6e6e6',
         },
         isDefault: false,
     },
@@ -223,14 +197,22 @@ export const PRESET_CUSTOM_STATUSES: TaskStatus[] = [
 ];
 
 /**
- * 所有内置状态（默认 + 预设自定义）
+ * 预设自定义状态（历史兼容）
+ *
+ * 2026-11-23 重构后，这 5 个状态已提升为 DEFAULT_TASK_STATUSES 的正式成员
+ * （「待办」「已完成」被移除）。此处保留同名导出仅为兼容既有引用，
+ * 内容与 DEFAULT_TASK_STATUSES 相同，不再单独拼接进 ALL_BUILTIN_STATUSES。
+ */
+export const PRESET_CUSTOM_STATUSES: TaskStatus[] = DEFAULT_TASK_STATUSES;
+
+/**
+ * 所有内置状态
  *
  * 用作工具函数的默认参数，确保所有内置符号都能被识别。
+ * 注意：不要再拼接 PRESET_CUSTOM_STATUSES——它与默认列表内容相同，
+ * 拼接会产生重复项（编辑面板会出现两遍同名按钮）。
  */
-export const ALL_BUILTIN_STATUSES: TaskStatus[] = [
-    ...DEFAULT_TASK_STATUSES,
-    ...PRESET_CUSTOM_STATUSES,
-];
+export const ALL_BUILTIN_STATUSES: TaskStatus[] = [...DEFAULT_TASK_STATUSES];
 
 // ==================== 马卡龙配色 ====================
 
@@ -389,9 +371,9 @@ export function validateStatusSymbol(
  *
  * @example
  * ```ts
- * getStatusColor('done', DEFAULT_TASK_STATUSES)
+ * getStatusColor('canceled', DEFAULT_TASK_STATUSES)
  * // { bg: '#52c41a', text: '#FFFFFF' }
- * getStatusColor('done', DEFAULT_TASK_STATUSES, 'dark')
+ * getStatusColor('canceled', DEFAULT_TASK_STATUSES, 'dark')
  * // { bg: '#3c8524', text: '#e6e6e6' }
  * ```
  */
@@ -443,24 +425,29 @@ export function getCurrentThemeMode(): ThemeMode {
 /**
  * 根据复选框状态字符解析状态类型
  *
+ * 关键：`[ ]`（空格）代表「无状态」，必须返回空字符串而不是某个具体状态。
+ * 否则所有普通任务都会被染成默认首项的颜色，写回时还会把 `[ ]` 改写成 `[!]`。
+ *
  * @param checkboxStatus - 复选框状态字符
- * @param statuses - 状态配置列表（默认使用 DEFAULT_TASK_STATUSES）
- * @returns 状态 key，未找到则返回 'todo'
+ * @param statuses - 状态配置列表（默认使用内置全部状态）
+ * @returns 状态 key；无匹配或无状态时返回 ''
  *
  * @example
  * ```ts
- * parseStatusFromCheckbox('x')  // 'done'
- * parseStatusFromCheckbox(' ')  // 'todo'
+ * parseStatusFromCheckbox('!')  // 'important'
  * parseStatusFromCheckbox('/')  // 'in_progress'
- * parseStatusFromCheckbox('-')  // 'canceled'
+ * parseStatusFromCheckbox(' ')  // ''  ← 无状态
+ * parseStatusFromCheckbox('z')  // ''  ← 未知符号也无状态
  * ```
  */
 export function parseStatusFromCheckbox(
     checkboxStatus: string,
     statuses: TaskStatus[] = ALL_BUILTIN_STATUSES
 ): string {
+    // 空格 = 无状态（普通待办），不映射到任何颜色标签
+    if (checkboxStatus === ' ') return '';
     const status = statuses.find(s => s.symbol === checkboxStatus);
-    return status?.key || 'todo';
+    return status?.key || '';
 }
 
 /**
@@ -479,5 +466,5 @@ export function isDefaultStatus(key: string): key is DefaultTaskStatusType {
  * @returns 默认状态 key 数组
  */
 export function getDefaultStatusKeys(): DefaultTaskStatusType[] {
-    return DEFAULT_TASK_STATUSES.map(s => s.key as DefaultTaskStatusType);
+    return DEFAULT_TASK_STATUSES.map(s => s.key);
 }

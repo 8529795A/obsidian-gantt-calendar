@@ -13,9 +13,7 @@ interface ChipDef {
 
 function getSharedChips(): ChipDef[] {
 	return [
-		{ label: i18n.t('settings.cardDisplay.chips.checkbox'), keys: { day: 'dayViewShowCheckbox', week: 'weekViewShowCheckbox', month: 'monthViewShowCheckbox', task: 'taskViewShowCheckbox', sidebar: 'sidebarShowCheckbox' } },
 		{ label: i18n.t('settings.cardDisplay.chips.tags'), keys: { day: 'dayViewShowTags', week: 'weekViewShowTags', month: 'monthViewShowTags', task: 'taskViewShowTags', sidebar: 'sidebarShowTags' } },
-		{ label: i18n.t('settings.cardDisplay.chips.priority'), keys: { day: 'dayViewShowPriority', week: 'weekViewShowPriority', month: 'monthViewShowPriority', task: 'taskViewShowPriority', sidebar: 'sidebarShowPriority' } },
 		{ label: i18n.t('settings.cardDisplay.chips.extraContent'), keys: { day: 'dayViewShowTicktick', week: 'weekViewShowTicktick', month: 'monthViewShowTicktick', task: 'taskViewShowTicktick', sidebar: 'sidebarShowTicktick' } },
 	];
 }

@@ -52,9 +52,11 @@
 /* 1 小时高度由 --gc-tl-hour-h 驱动（组件内联注入，单一来源 HOUR_PX） */
 .gc-week-view__tasks-grid {
 	display: grid;
-	grid-template-columns: 48px repeat(7, 1fr);
-	grid-template-rows: 52px auto auto;
-	align-content: start;
+	/* 栅格已移除 48px 刻度列，7 天等分（与组件内联 gridTemplateColumns 一致） */
+	grid-template-columns: repeat(7, 1fr);
+	/* 第 3 行（日列）用 1fr 吃掉剩余高度：列分隔线才能画到画布底部 */
+	grid-template-rows: 52px auto minmax(0, 1fr);
+	align-content: stretch;
 	overflow-y: auto;
 	overflow-x: hidden;
 	flex: 1 1 auto;
@@ -101,20 +103,8 @@
 	font-variant-numeric: tabular-nums;
 }
 
-/* 全天行 gutter（第 1 列第 2 行） */
-.gc-week-view__allday-gutter {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	padding: 4px 6px 0 0;
-	font-size: 11px;
-	color: var(--text-muted);
-	border-right: 1px solid var(--background-modifier-border);
-	border-bottom: 1px solid var(--background-modifier-border);
-	background-color: var(--background-primary-alt);
-}
-
-/* 全天行（第 2-8 列第 2 行）：背景日格 + 绝对定位横跨条 */
+/* 全天行（占满整行 7 列）：背景日格 + 绝对定位横跨条。
+   原「全天」文字标签（allday-gutter）已于 2026-11-22 移除 */
 .gc-week-view__allday-row {
 	position: relative;
 	border-bottom: 1px solid var(--background-modifier-border);
@@ -197,33 +187,31 @@
 	right: 0;
 }
 
-/* 日列（连续画布）：整点实线 + 半点浅线网格，块按分钟绝对定位 */
+/* 日列（列表式堆叠）：无时间轴网格，块按时间先后自上而下排列 */
 .gc-week-view__day-col {
 	position: relative;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 4px;
+	/* 撑满整行高度：列分隔线（border-right）一直画到画布底部，而非止于内容末端 */
+	align-self: stretch;
+	min-height: 100%;
+	overflow-y: auto;
+	overflow-x: hidden;
+	/* 透出父级极浅蓝底板（不覆盖 background，便于与任务块区分） */
+	background-color: transparent;
 	/* 长按空白处创建任务时，不触发系统文本选择与长按菜单 */
 	user-select: none;
 	-webkit-user-select: none;
 	-webkit-touch-callout: none;
 	border-right: 1px solid var(--background-modifier-border);
-	background-image:
-		repeating-linear-gradient(
-			to bottom,
-			var(--background-modifier-border) 0,
-			var(--background-modifier-border) 1px,
-			transparent 1px,
-			transparent var(--gc-tl-hour-h)
-		),
-		repeating-linear-gradient(
-			to bottom,
-			color-mix(in srgb, var(--background-modifier-border) 45%, transparent) 0,
-			color-mix(in srgb, var(--background-modifier-border) 45%, transparent) 1px,
-			transparent 1px,
-			transparent calc(var(--gc-tl-hour-h) / 2)
-		);
 }
 
+/* 「今天」只靠表头日期数字变红标识（见 theme.css），整列不染色，
+   以免整排红底与浅蓝底板 + 白色任务块冲突 */
 .gc-week-view__day-col--today {
-	background-color: var(--background-primary-alt);
+	background-color: transparent;
 }
 
 .gc-week-view__day-col--drag-over {
@@ -238,11 +226,87 @@
 	min-width: 0;
 }
 
-/* 块内卡片高度由块容器按时长撑开（timeline 变体默认固定 24px，此处覆盖） */
-.gc-week-view__time-block .gc-task-card--timeline {
-	height: 100%;
-	min-height: var(--gc-tl-card-h);
+/* 列表式堆叠块：取消绝对定位，高度由内容（文字行数）自适应，文字不被遮挡。
+   必须用 .gc-task-card.gc-task-card--timeline 同级的双类选择器 + 置于文件后段，
+   否则会被 task-card.css 的固定 24px 高度规则覆盖 */
+.gc-week-view__time-block--flow {
+	position: relative;
+	top: auto;
+	left: auto;
+	width: 100%;
+	height: auto;
+	min-height: 0;
+	flex: 0 0 auto;
+	overflow: visible;
 }
+
+/* 块内卡片：取消 timeline 变体的固定高度与单行裁切，改为内容撑开 + 允许换行 */
+.gc-week-view__time-block--flow .gc-task-card.gc-task-card--timeline {
+	height: auto;
+	min-height: var(--gc-tl-card-h);
+	overflow: visible;
+	flex-wrap: wrap;
+	align-content: flex-start;
+	align-items: flex-start;
+	/* 行距收紧：首行（复选框+标签）与次行（文字）之间只留 2px */
+	gap: 2px 4px;
+	/* 上下留白，避免文字贴边 */
+	padding: 3px 6px;
+}
+
+/* 文字多行显示：块高随行数增长，不再 ellipsis 截断 */
+.gc-week-view__time-block--flow .gc-task-card--timeline .gc-task-card__text {
+	white-space: normal;
+	word-break: break-word;
+	overflow: visible;
+	text-overflow: clip;
+	/* 方案 A：文字独占第二行（flex-basis 100% 强制换行并吃满整宽），
+	   不再与首行标签抢宽度——原 flex-basis:0 会让文字被压到接近 0 宽，
+	   表现为逐字竖排（如 "Magpie" 拆成 Ma/gpi/e） */
+	order: 3;
+	flex: 1 1 100%;
+	min-width: 0;
+	max-height: none;
+}
+
+/* 首行 = 复选框 + 标签 + 优先级。标签用 order 提到文字之前（DOM 里标签在文字之后），
+   并吃满首行剩余宽度，把优先级推到右端 */
+.gc-week-view__time-block--flow .gc-task-card--timeline .gc-task-card__tags {
+	order: 1;
+	flex: 1 1 auto;
+	flex-wrap: wrap;
+	min-width: 0;
+	max-width: 100%;
+	margin-left: 0;
+	gap: 2px;
+}
+
+/* 块内标签缩小一档：同样宽度能多容纳一个药丸 */
+.gc-week-view__time-block--flow .gc-task-card--timeline .gc-tag {
+	font-size: var(--gc-font-xxs);
+	line-height: 1.4;
+	padding: 0 4px;
+	border-radius: 8px;
+}
+
+/* "+N" 溢出徽标 */
+.gc-week-view__time-block--flow .gc-task-card--timeline .gc-task-card__tags-overflow {
+	display: inline-flex;
+	align-items: center;
+	flex-shrink: 0;
+	padding: 0 4px;
+	font-size: var(--gc-font-xxs);
+	font-weight: 500;
+	line-height: 1.4;
+	color: var(--text-muted);
+	background-color: var(--background-modifier-border);
+	border-radius: 8px;
+	white-space: nowrap;
+}
+
+/* 无标签任务：首行只留复选框，文字仍从第二行开始。
+   无需额外占位——文字已是 flex-basis:100%，天然无法与复选框同行，
+   因此「有标签/无标签」的块标题基线一致，竖扫不错行（用户 2026-11-22 要求） */
 
 /* 延续分段：平角 + 箭头指示（延续自前一日/次日） */
 .gc-week-view__time-block--continues-before {
@@ -297,6 +361,19 @@
 	font-variant-numeric: tabular-nums;
 	pointer-events: none;
 	white-space: nowrap;
+}
+
+/* 列表式堆叠块内：时刻改为参与文档流（独占首行，右对齐），不再绝对定位遮挡标题 */
+.gc-week-view__time-block--flow .gc-week-view__time-block-time {
+	position: static;
+	display: block;
+	align-self: stretch;
+	width: 100%;
+	margin: 0 0 1px;
+	padding: 0;
+	text-align: right;
+	background-color: transparent;
+	order: -1;
 }
 
 /* resize 手柄（仅真实起止边缘渲染）：6px 命中区 + 悬停视觉条 */
@@ -479,15 +556,17 @@
 }
 
 /* 任务块内文本多行换行：块高度由时长决定（主），文本填充可用空间并随块裁剪（从）。
-   仅作用于时间块；全天条（固定 24px）与日视图槽位保持单行 */
-.gc-week-view__time-block .gc-task-card--timeline {
+   仅作用于时间块；全天条（固定 24px）与日视图槽位保持单行。
+   已排除 --flow（列表式堆叠块）：后者由上方 --flow 规则接管（文字独占整行），
+   两者特异性相同，若不加 :not() 会因本段靠后而把 flex-basis 覆盖回 0 */
+.gc-week-view__time-block:not(.gc-week-view__time-block--flow) .gc-task-card--timeline {
 	flex-wrap: wrap;
 	/* 垂直居中；safe 在内容溢出块高时回退为顶部对齐（避免上下两端同时被裁） */
 	align-content: safe center;
 	align-items: center;
 }
 
-.gc-week-view__time-block .gc-task-card--timeline .gc-task-card__text {
+.gc-week-view__time-block:not(.gc-week-view__time-block--flow) .gc-task-card--timeline .gc-task-card__text {
 	white-space: normal;
 	word-break: break-word;
 	text-overflow: clip;
@@ -498,7 +577,7 @@
 	max-height: 100%;
 }
 
-.gc-week-view__time-block .gc-task-card--timeline .gc-task-card__tags {
+.gc-week-view__time-block:not(.gc-week-view__time-block--flow) .gc-task-card--timeline .gc-task-card__tags {
 	max-width: 100%;
 }
 

@@ -40,8 +40,6 @@ const mkTask = (over: Partial<GCTask>): GCTask => ({
 	lineNumber: 1,
 	content: '',
 	description: 'x',
-	completed: false,
-	priority: 'normal',
 	...over,
 });
 
@@ -215,8 +213,8 @@ describe('resolveAnchorDateField：due → scheduled → start 回退链', () =>
 		expect(resolveAnchorDateField(mkTask({ startDate: DAY(8, 1) }))).toBe('startDate');
 	});
 
-	it('created/completion/cancelled 不参与锚定；三字段全空返回 null', () => {
-		expect(resolveAnchorDateField(mkTask({ createdDate: DAY(8, 1), completionDate: DAY(8, 2), cancelledDate: DAY(8, 3) }))).toBeNull();
+	it('created 不参与锚定；三字段全空返回 null', () => {
+		expect(resolveAnchorDateField(mkTask({ createdDate: DAY(8, 1) }))).toBeNull();
 		expect(resolveAnchorDateField(mkTask({}))).toBeNull();
 	});
 });

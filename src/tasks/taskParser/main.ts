@@ -30,6 +30,7 @@ import { passesGlobalFilter, removeGlobalFilter } from './step2';
 import { detectFormat } from './step3';
 import { parseCheckboxStatus, parseTaskAttributes } from './step4';
 import { extractTaskDescription, extractTags, extractTicktick, findMetadataValue } from './utils';
+import { findDetailEndLine, normalizeDetailLines } from '../taskDetails';
 
 // ==================== 主解析函数 ====================
 
@@ -87,8 +88,8 @@ export function parseTasksFromListItems(
 
         const contentWithoutFilter = removeGlobalFilter(rawContent, globalTaskFilter);
 
-        // 解析复选框状态（包括 status）
-        const { completed, cancelled, status } = parseCheckboxStatus(checkboxStatus);
+        // 解析复选框状态（仅取状态 key，用于纯颜色标签）
+        const { status } = parseCheckboxStatus(checkboxStatus);
 
         // ==================== 第三步：判断格式 ====================
         const detectedFormat = detectFormat(contentWithoutFilter, enabledFormats);
@@ -105,14 +106,26 @@ export function parseTasksFromListItems(
             lineNumber: lineNumber + 1, // 转换为 1-based 行号
             content: contentWithoutFilter,
             description: extractTaskDescription(contentWithoutTicktick),
-            completed,
-            cancelled,
             status,
-            priority: 'normal', // 默认优先级
             metadataFields: metadataFields.length > 0 ? metadataFields : undefined,
             // 从统一的 metadataFields 数组中派生 feishuGuid（供飞书同步使用）
             feishuGuid: findMetadataValue(metadataFields, 'guid'),
         };
+
+        // 任务详情：任务行下方属于该列表项的内容（惰性续行 + 子列表）。
+        //
+        // 刻意**不依赖** Obsidian 的 item.position.end：
+        //  - 文件修改事件路径（parseFileFromContent）构造的合成 listItems 里
+        //    end.line 恒等于任务行本身，用它会导致详情永远为空；
+        //  - metadataCache 的 end 对「无缩进惰性续行」的覆盖也不保证。
+        // 统一走自研边界推断，两条解析路径对同一文件得到完全一致的详情，
+        // 避免「首扫有详情、改一下文件后详情消失」这类不一致。
+        const taskIndent = taskMatch.indent.length;
+        const detailEnd = findDetailEndLine(lines, lineNumber, taskIndent);
+        const detailRaw = lines.slice(lineNumber + 1, detailEnd);
+        while (detailRaw.length > 0 && detailRaw[detailRaw.length - 1].trim() === '') detailRaw.pop();
+        const details = normalizeDetailLines(detailRaw);
+        if (details) task.details = details;
 
         // 解析标签
         const tags = extractTags(contentWithoutFilter);
@@ -122,26 +135,18 @@ export function parseTasksFromListItems(
 
         // 如果检测到有效格式，解析任务属性
         if (format && enabledFormats.includes(format)) {
-            const { priority, dates, datePrecisions, hasCancelledDate, repeat } = parseTaskAttributes(
+            const { dates, datePrecisions, repeat } = parseTaskAttributes(
                 contentWithoutFilter,
                 format
             );
 
             task.format = format;
-            task.priority = priority || 'normal'; // 确保有默认优先级
             task.createdDate = dates.createdDate;
             task.startDate = dates.startDate;
             task.scheduledDate = dates.scheduledDate;
             task.dueDate = dates.dueDate;
-            task.cancelledDate = dates.cancelledDate;
-            task.completionDate = dates.completionDate;
             task.repeat = repeat;
             task.datePrecision = datePrecisions;
-
-            // 如果存在取消日期且任务未完成，确保取消状态被设置
-            if (hasCancelledDate && !task.completed) {
-                task.cancelled = true;
-            }
         }
 
         // ==================== 警告检查 ====================
@@ -151,13 +156,10 @@ export function parseTasksFromListItems(
         }
         // 未规划时间警告
         else if (
-            !task.priority &&
             !task.createdDate &&
             !task.startDate &&
             !task.scheduledDate &&
-            !task.dueDate &&
-            !task.cancelledDate &&
-            !task.completionDate
+            !task.dueDate
         ) {
             task.warning = '未规划任务时间，请设置';
         }
@@ -290,7 +292,7 @@ export function parseSingleTaskLine(
     }
 
     const contentWithoutFilter = removeGlobalFilter(rawContent, globalTaskFilter);
-    const { completed, cancelled, status } = parseCheckboxStatus(checkboxStatus);
+    const { status } = parseCheckboxStatus(checkboxStatus);
 
     const detectedFormat = detectFormat(contentWithoutFilter, enabledFormats);
     const format = detectedFormat === 'mixed' ? 'tasks' : detectedFormat;
@@ -304,10 +306,7 @@ export function parseSingleTaskLine(
         lineNumber: lineNumber || 0,
         content: contentWithoutFilter,
         description: extractTaskDescription(contentWithoutTicktick),
-        completed,
-        cancelled,
         status,
-        priority: 'normal', // 默认优先级
         metadataFields: metadataFields.length > 0 ? metadataFields : undefined,
         feishuGuid: findMetadataValue(metadataFields, 'guid'),
     };
@@ -319,20 +318,15 @@ export function parseSingleTaskLine(
     }
 
     if (format && enabledFormats.includes(format)) {
-        const { priority, dates, datePrecisions, hasCancelledDate, repeat } = parseTaskAttributes(
+        const { dates, datePrecisions, repeat } = parseTaskAttributes(
             contentWithoutFilter,
             format
         );
 
         task.format = format;
-        task.priority = priority || 'normal'; // 确保有默认优先级
         Object.assign(task, dates);
         task.repeat = repeat;
         task.datePrecision = datePrecisions;
-
-        if (hasCancelledDate && !task.completed) {
-            task.cancelled = true;
-        }
     }
 
     if (detectedFormat === 'mixed') {

@@ -21,8 +21,8 @@ import type { TaskStatus } from '../src/tasks/taskStatus';
 
 describe('任务状态', () => {
 	describe('DEFAULT_TASK_STATUSES', () => {
-		it('TS-01: 包含 2 种核心默认状态', () => {
-			expect(DEFAULT_TASK_STATUSES).toHaveLength(2);
+		it('TS-01: 包含 5 个纯颜色状态（待办/已完成已移除）', () => {
+			expect(DEFAULT_TASK_STATUSES).toHaveLength(5);
 		});
 
 		it('TS-02: 每种状态都有必要的字段', () => {
@@ -32,18 +32,21 @@ describe('任务状态', () => {
 				expect(status.name).toBeTruthy();
 				expect(status.lightColors).toBeDefined();
 				expect(status.darkColors).toBeDefined();
-				expect(status.isDefault).toBe(true);
+				// 状态已统一为纯颜色标签：不再有"不可删除"的默认状态
+				expect(status.isDefault).toBe(false);
 			});
 		});
 
-		it('TS-03: 包含所有预期状态', () => {
+		it('TS-03: 包含所有预期状态（不含 todo/done）', () => {
 			const keys = DEFAULT_TASK_STATUSES.map(s => s.key);
-			expect(keys).toEqual(['todo', 'done']);
+			expect(keys).toEqual(['important', 'canceled', 'in_progress', 'question', 'start']);
+			expect(keys).not.toContain('todo');
+			expect(keys).not.toContain('done');
 		});
 
 		it('TS-04: 符号映射正确', () => {
 			const symbolMap: Record<string, string> = {
-				' ': 'todo', 'x': 'done',
+				'!': 'important', '-': 'canceled', '/': 'in_progress', '?': 'question', n: 'start',
 			};
 			DEFAULT_TASK_STATUSES.forEach(status => {
 				expect(symbolMap[status.symbol]).toBe(status.key);
@@ -69,13 +72,13 @@ describe('任务状态', () => {
 	});
 
 	describe('ALL_BUILTIN_STATUSES', () => {
-		it('TS-01c: 包含全部 7 种内置状态', () => {
-			expect(ALL_BUILTIN_STATUSES).toHaveLength(7);
+		it('TS-01c: 包含全部 5 种内置状态', () => {
+			expect(ALL_BUILTIN_STATUSES).toHaveLength(5);
 		});
 
 		it('TS-02c: 符号映射正确', () => {
 			const symbolMap: Record<string, string> = {
-				' ': 'todo', 'x': 'done', '!': 'important', '-': 'canceled',
+				'!': 'important', '-': 'canceled',
 				'/': 'in_progress', '?': 'question', 'n': 'start',
 			};
 			ALL_BUILTIN_STATUSES.forEach(status => {
@@ -86,8 +89,6 @@ describe('任务状态', () => {
 
 	describe('getStatusBySymbol', () => {
 		it('TS-05: 查找存在的符号', () => {
-			expect(getStatusBySymbol('x')!.key).toBe('done');
-			expect(getStatusBySymbol(' ')!.key).toBe('todo');
 			expect(getStatusBySymbol('!')!.key).toBe('important');
 			expect(getStatusBySymbol('/')!.key).toBe('in_progress');
 			expect(getStatusBySymbol('-')!.key).toBe('canceled');
@@ -103,8 +104,8 @@ describe('任务状态', () => {
 
 	describe('getStatusByKey', () => {
 		it('TS-07: 查找存在的 key', () => {
-			expect(getStatusByKey('done')!.symbol).toBe('x');
-			expect(getStatusByKey('todo')!.symbol).toBe(' ');
+			expect(getStatusByKey('important')!.symbol).toBe('!');
+			expect(getStatusByKey('in_progress')!.symbol).toBe('/');
 		});
 
 		it('TS-08: 不存在的 key 返回 undefined', () => {
@@ -164,16 +165,27 @@ describe('任务状态', () => {
 
 	describe('getStatusColor', () => {
 		it('TS-16: light 模式返回 lightColors', () => {
-			const color = getStatusColor('done', ALL_BUILTIN_STATUSES, 'light');
+			const color = getStatusColor('important', ALL_BUILTIN_STATUSES, 'light');
 			expect(color).toBeDefined();
-			expect(color!.bg).toBe('#52c41a');
+			expect(color!.bg).toBe('#ff4d4f');
 			expect(color!.text).toBe('#FFFFFF');
 		});
 
 		it('TS-17: dark 模式返回 darkColors', () => {
-			const color = getStatusColor('done', ALL_BUILTIN_STATUSES, 'dark');
+			const color = getStatusColor('important', ALL_BUILTIN_STATUSES, 'dark');
 			expect(color).toBeDefined();
-			expect(color!.bg).toBe('#3c8524');
+			expect(color!.bg).toBe('#cc3a3c');
+		});
+
+		it('TS-17b: 已取消为绿色（沿用原「已完成」色，不再是灰）', () => {
+			const light = getStatusColor('canceled', ALL_BUILTIN_STATUSES, 'light');
+			expect(light!.bg).toBe('#52c41a');
+			expect(light!.text).toBe('#FFFFFF');
+			const dark = getStatusColor('canceled', ALL_BUILTIN_STATUSES, 'dark');
+			expect(dark!.bg).toBe('#3c8524');
+			expect(dark!.text).toBe('#e6e6e6');
+			// 确认不再是旧的灰色
+			expect(light!.bg).not.toBe('#d9d9d9');
 		});
 
 		it('TS-18a: 不存在的 key 返回 undefined', () => {
@@ -199,25 +211,25 @@ describe('任务状态', () => {
 	});
 
 	describe('parseStatusFromCheckbox', () => {
-		it('TS-19: x → done', () => expect(parseStatusFromCheckbox('x')).toBe('done'));
-		it('TS-20: 空格 → todo', () => expect(parseStatusFromCheckbox(' ')).toBe('todo'));
+		it('TS-19: x 已无映射 → 空串', () => expect(parseStatusFromCheckbox('x')).toBe(''));
+		it('TS-20: 空格 = 无状态 → 空串', () => expect(parseStatusFromCheckbox(' ')).toBe(''));
 		it('TS-21: / → in_progress', () => expect(parseStatusFromCheckbox('/')).toBe('in_progress'));
 		it('TS-22: - → canceled', () => expect(parseStatusFromCheckbox('-')).toBe('canceled'));
 		it('TS-23: ! → important', () => expect(parseStatusFromCheckbox('!')).toBe('important'));
 		it('TS-24: ? → question', () => expect(parseStatusFromCheckbox('?')).toBe('question'));
 		it('TS-25: n → start', () => expect(parseStatusFromCheckbox('n')).toBe('start'));
-		it('TS-26: 未知 → todo', () => expect(parseStatusFromCheckbox('z')).toBe('todo'));
+		it('TS-26: 未知符号 → 空串', () => expect(parseStatusFromCheckbox('z')).toBe(''));
 	});
 
 	describe('isDefaultStatus', () => {
-		it('TS-27: 默认状态返回 true', () => {
-			expect(isDefaultStatus('todo')).toBe(true);
-			expect(isDefaultStatus('done')).toBe(true);
+		it('TS-27: 默认列表内的状态返回 true', () => {
+			expect(isDefaultStatus('important')).toBe(true);
+			expect(isDefaultStatus('in_progress')).toBe(true);
 		});
 
-		it('TS-27b: 预设自定义状态返回 false', () => {
-			expect(isDefaultStatus('important')).toBe(false);
-			expect(isDefaultStatus('in_progress')).toBe(false);
+		it('TS-27b: 已移除的 todo/done 返回 false', () => {
+			expect(isDefaultStatus('todo')).toBe(false);
+			expect(isDefaultStatus('done')).toBe(false);
 		});
 
 		it('TS-28: 自定义状态返回 false', () => {
@@ -226,10 +238,10 @@ describe('任务状态', () => {
 	});
 
 	describe('getDefaultStatusKeys', () => {
-		it('TS-29: 返回 2 个默认 key', () => {
+		it('TS-29: 返回 5 个默认 key', () => {
 			const keys = getDefaultStatusKeys();
-			expect(keys).toHaveLength(2);
-			expect(keys).toEqual(['todo', 'done']);
+			expect(keys).toHaveLength(5);
+			expect(keys).toEqual(['important', 'canceled', 'in_progress', 'question', 'start']);
 		});
 	});
 

@@ -105,26 +105,6 @@ export class TaskSettingsBuilder extends BaseBuilder {
 						}));
 			});
 
-			// 默认任务优先级
-			addSetting(setting => {
-				setting.setName(i18n.t('settings.tasks.creation.defaultPriority.name'))
-					.setDesc(i18n.t('settings.tasks.creation.defaultPriority.description'))
-					.addDropdown(drop => drop
-						.addOptions({
-							'highest': i18n.t('settings.tasks.creation.defaultPriority.options.highest'),
-							'high': i18n.t('settings.tasks.creation.defaultPriority.options.high'),
-							'medium': i18n.t('settings.tasks.creation.defaultPriority.options.medium'),
-							'low': i18n.t('settings.tasks.creation.defaultPriority.options.low'),
-							'lowest': i18n.t('settings.tasks.creation.defaultPriority.options.lowest'),
-							'normal': i18n.t('settings.tasks.creation.defaultPriority.options.normal'),
-						})
-						.setValue(this.plugin.settings.defaultTaskPriority || 'medium')
-						.onChange((value) => {
-							this.plugin.settings.defaultTaskPriority = value as 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal';
-							void this.saveAndRefreshViews();
-						}));
-			});
-
 			// 周期任务实例显示数量
 			addSetting(setting => {
 				setting.setName(i18n.t('settings.tasks.creation.recurringLimit.name'))

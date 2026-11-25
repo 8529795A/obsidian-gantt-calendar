@@ -9,10 +9,8 @@ export const TaskViewConfig: TaskCardConfig = {
 	viewModifier: 'task',
 
 	// 元素显示控制
-	showCheckbox: true,
 	showDescription: true,
 	showTags: true,
-	showPriority: true,
 	showFileLocation: true,
 	showWarning: true,
 	showTicktick: true,

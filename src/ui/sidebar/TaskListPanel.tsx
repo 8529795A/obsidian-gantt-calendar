@@ -16,27 +16,12 @@ import { TaskCard } from '../components/TaskCard';
 import { DropdownMenu, type DropdownMenuSection } from '../components/DropdownMenu';
 import { Icon } from '../components/Icon';
 
-type PriorityFilter = 'all' | 'highest' | 'high' | 'medium' | 'normal' | 'low' | 'lowest';
 type DateFilter = 'all' | 'today' | 'week' | 'month';
-type SortField = 'priority' | 'dueDate' | 'startDate';
+type SortField = 'dueDate' | 'startDate';
 type SortOrder = 'asc' | 'desc';
-
-// 文案在模块加载时求值会固化（i18n 尚未初始化或语言已切换）——改为调用时求值
-function getPriorities(): Array<{ key: PriorityFilter; label: string }> {
-	return [
-	{ key: 'all', label: i18n.t('sidebar.taskList.priority.all') },
-	{ key: 'highest', label: i18n.t('sidebar.taskList.priority.highest') },
-	{ key: 'high', label: i18n.t('sidebar.taskList.priority.high') },
-	{ key: 'medium', label: i18n.t('sidebar.taskList.priority.medium') },
-	{ key: 'normal', label: i18n.t('sidebar.taskList.priority.normal') },
-	{ key: 'low', label: i18n.t('sidebar.taskList.priority.low') },
-	{ key: 'lowest', label: i18n.t('sidebar.taskList.priority.lowest') },
-	];
-}
 
 function getSortOptions(): Array<{ key: SortField; label: string }> {
 	return [
-	{ key: 'priority', label: i18n.t('sidebar.taskList.sortOptions.byPriority') },
 	{ key: 'dueDate', label: i18n.t('sidebar.taskList.sortOptions.byDueDate') },
 	{ key: 'startDate', label: i18n.t('sidebar.taskList.sortOptions.byStartDate') },
 	];
@@ -52,16 +37,13 @@ function getDateOptions(): Array<{ key: DateFilter; label: string; icon: string 
 }
 
 function inferStatus(task: GCTask): string {
-	if (task.status) return task.status;
-	if (task.completed) return 'done';
-	if (task.cancelled) return 'canceled';
-	return 'todo';
+	// 状态为纯颜色标签，无完成/取消语义：无 status 时统一视为待办
+	return task.status || (DEFAULT_TASK_STATUSES[0]?.key ?? 'important');
 }
 
 function filterTasks(
 	tasks: GCTask[],
 	statusFilter: StatusFilterState,
-	priorityFilter: PriorityFilter,
 	selectedTags: string[],
 	tagOperator: 'OR' | 'AND',
 	dateFilter: DateFilter
@@ -70,10 +52,6 @@ function filterTasks(
 
 	if (statusFilter.selectedStatuses.length > 0) {
 		result = result.filter(t => statusFilter.selectedStatuses.includes(inferStatus(t)));
-	}
-
-	if (priorityFilter !== 'all') {
-		result = result.filter(t => t.priority === priorityFilter);
 	}
 
 	if (selectedTags.length > 0) {
@@ -95,25 +73,8 @@ function filterTasks(
 			: dateFilter === 'week' ? (d: Date) => isThisWeek(d)
 			: isThisMonth;
 		result = result.filter(t => {
-			const dates = [t.dueDate, t.scheduledDate, t.startDate, t.createdDate, t.completionDate];
+			const dates = [t.dueDate, t.scheduledDate, t.startDate, t.createdDate];
 			return dates.some(d => d && matchFn(d));
-		});
-	}
-
-	const showCompleted = statusFilter.selectedStatuses.includes('done');
-	const showCanceled = statusFilter.selectedStatuses.includes('canceled');
-	if (!showCompleted && !showCanceled) {
-		const dateMatchFn = dateFilter !== 'all'
-			? (dateFilter === 'today' ? isToday
-				: dateFilter === 'week' ? (d: Date) => isThisWeek(d)
-				: isThisMonth)
-			: null;
-		result = result.filter(t => {
-			if (!t.completed && !t.cancelled) return true;
-			if (!dateMatchFn) return false;
-			if (t.completed && t.completionDate && dateMatchFn(t.completionDate)) return true;
-			if (t.cancelled && t.cancelledDate && dateMatchFn(t.cancelledDate)) return true;
-			return false;
 		});
 	}
 
@@ -131,7 +92,6 @@ export function TaskListPanel(): JSX.Element {
 	const [searchQuery, setSearchQuery] = useState('');
 	const [debouncedQuery, setDebouncedQuery] = useState('');
 	const [statusFilter, setStatusFilter] = useState<StatusFilterState>({ ...DEFAULT_STATUS_FILTER_STATE });
-	const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('all');
 	const [selectedTags, setSelectedTags] = useState<string[]>([]);
 	const [tagOperator, setTagOperator] = useState<'OR' | 'AND' | 'NOT'>('OR');
 	const [dateFilter, setDateFilter] = useState<DateFilter>('all');
@@ -161,7 +121,7 @@ export function TaskListPanel(): JSX.Element {
 
 	// 排序任务
 	const sortedTasks = useMemo(() => {
-		let result = filterTasks(tasks, statusFilter, priorityFilter, selectedTags, tagOperator === 'NOT' ? 'AND' : tagOperator, dateFilter);
+		let result = filterTasks(tasks, statusFilter, selectedTags, tagOperator === 'NOT' ? 'AND' : tagOperator, dateFilter);
 
 		if (debouncedQuery) {
 			result = result.filter(t =>
@@ -170,11 +130,9 @@ export function TaskListPanel(): JSX.Element {
 			);
 		}
 
-		const field = sortBy === 'priority' ? 'priority' as const
-			: sortBy === 'dueDate' ? 'dueDate' as const
-			: 'startDate' as const;
+		const field = sortBy === 'dueDate' ? 'dueDate' as const : 'startDate' as const;
 		return sortTasks(result, { field, order: sortOrder });
-	}, [tasks, statusFilter, priorityFilter, selectedTags, tagOperator, dateFilter, debouncedQuery, sortBy, sortOrder]);
+	}, [tasks, statusFilter, selectedTags, tagOperator, dateFilter, debouncedQuery, sortBy, sortOrder]);
 
 	const config = useMemo(() => buildSidebarConfig(plugin.settings), [plugin.settings]);
 
@@ -199,17 +157,6 @@ export function TaskListPanel(): JSX.Element {
 			},
 		})),
 	}], [statusFilter.selectedStatuses]);
-
-	// 优先级筛选菜单
-	const prioritySections: DropdownMenuSection[] = useMemo(() => [{
-		items: getPriorities().map((p) => ({
-			key: `priority-${p.key}`,
-			title: p.label,
-			icon: p.key === 'all' ? undefined : 'flame',
-			checked: priorityFilter === p.key,
-			onClick: () => setPriorityFilter(p.key),
-		})),
-	}], [priorityFilter]);
 
 	// 排序菜单（点击同项切换升降序）
 	const sortSections: DropdownMenuSection[] = useMemo(() => [{
@@ -264,18 +211,6 @@ export function TaskListPanel(): JSX.Element {
 							onClick={onClick}
 						>
 							<Icon icon="filter" />
-						</button>
-					)}
-				</DropdownMenu>
-
-				<DropdownMenu sections={prioritySections} align="left" className="gc-u-pointer">
-					{({ onClick }) => (
-						<button
-							className={`clickable-icon${priorityFilter !== 'all' ? ' has-active-filter' : ''}`}
-							title={i18n.t('sidebar.taskList.filterBar.priorityFilter')}
-							onClick={onClick}
-						>
-							<Icon icon="flame" />
 						</button>
 					)}
 				</DropdownMenu>

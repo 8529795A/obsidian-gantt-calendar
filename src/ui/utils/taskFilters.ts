@@ -1,10 +1,10 @@
 import type { GCTask, SortState, TagFilterState, StatusFilterState } from '../../types';
 import { sortTasks } from '../../tasks/taskSorter';
+import { DEFAULT_TASK_STATUSES } from '../../tasks/taskStatus';
 
 export function inferStatus(task: GCTask): string {
-	if (task.completed) return 'done';
-	if (task.cancelled) return 'canceled';
-	return 'todo';
+	// 状态为纯颜色标签，无完成/取消语义：无 status 时统一视为待办
+	return task.status || (DEFAULT_TASK_STATUSES[0]?.key ?? 'important');
 }
 
 export function applyStatusFilter(tasks: GCTask[], state: StatusFilterState): GCTask[] {

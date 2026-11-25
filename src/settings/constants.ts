@@ -34,7 +34,6 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	defaultView: 'month', // 默认视图：月视图
 	newTaskHeading: undefined, // 默认添加到文件末尾
 	dailyNoteTemplatePath: '',
-	defaultTaskPriority: 'medium', // 默认中等优先级
 	enableDebugMode: false, // 默认关闭开发者模式
 	showViewNavButtonText: true, // 默认显示视图导航按钮文本
 	taskCardClickAction: 'openFile', // 默认跳转到 Markdown 源文件（与历史行为一致）
@@ -48,56 +47,46 @@ export const DEFAULT_SETTINGS: GanttCalendarSettings = {
 	// TaskView
 	taskViewSortField: 'dueDate',
 	taskViewSortOrder: 'asc',
-	taskViewSelectedStatuses: ['todo'],
+	taskViewSelectedStatuses: ['important'],
 	taskViewSelectedTags: [],
 	taskViewTagOperator: 'OR',
 	taskViewTimeFieldFilter: 'dueDate',
 	taskViewDateRangeMode: 'week',
 	// TaskView 卡片显示控制（默认与原 TaskViewConfig 预设一致：显示最完整信息）
-	taskViewShowCheckbox: true,
 	taskViewShowTags: true,
-	taskViewShowPriority: true,
 	taskViewShowTicktick: true,
 
 	// DayView
 	dayViewSortField: 'dueDate',
 	dayViewSortOrder: 'asc',
-	dayViewSelectedStatuses: ['todo'],
+	dayViewSelectedStatuses: ['important'],
 	dayViewSelectedTags: [],
 	dayViewTagOperator: 'OR',
-	dayViewShowCheckbox: true,
 	dayViewShowTags: true,
-	dayViewShowPriority: true,
 	dayViewShowTicktick: true,
 
 	// WeekView
-	weekViewSortField: 'priority',
+	weekViewSortField: 'dueDate',
 	weekViewSortOrder: 'desc',
-	weekViewSelectedStatuses: ['todo'],
+	weekViewSelectedStatuses: ['important'],
 	weekViewSelectedTags: [],
 	weekViewTagOperator: 'OR',
 	// WeekView 卡片显示控制
-	weekViewShowCheckbox: true,
 	weekViewShowTags: false,
-	weekViewShowPriority: false,
 	weekViewShowTicktick: false,
 
 	// MonthView
 	monthViewSortField: 'dueDate',
 	monthViewSortOrder: 'asc',
-	monthViewSelectedStatuses: ['todo'],
+	monthViewSelectedStatuses: ['important'],
 	monthViewSelectedTags: [],
 	monthViewTagOperator: 'OR',
 	// MonthView 卡片显示控制
-	monthViewShowCheckbox: true,
 	monthViewShowTags: false,
-	monthViewShowPriority: false,
 	monthViewShowTicktick: false,
 
 	// 侧边栏卡片显示控制
-	sidebarShowCheckbox: true,
 	sidebarShowTags: false,
-	sidebarShowPriority: false,
 	sidebarShowTicktick: false,
 	sidebarShowFileLocation: false,
 	sidebarShowDueDate: false,

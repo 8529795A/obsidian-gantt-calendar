@@ -4,10 +4,8 @@ import { ToolbarClasses, CreateTaskButtonClasses } from '../../utils/bem';
 import { usePlugin } from '../pluginContext';
 import { useCalendarStore, type ViewScope } from '../store/calendarStore';
 import { i18n } from '../../i18n/i18n';
-import { formatDate, getWeekOfDate } from '../../dateUtils/dateUtilsIndex';
+import { formatDate, getWeekOfDate, getWeekFromStart } from '../../dateUtils/dateUtilsIndex';
 import { openCreateTaskModal } from '../modals/TaskFormModal';
-import { syncFeishuTasks } from '../../commands/feishuCommands';
-import type GanttCalendarPlugin from '../../../main';
 import type { TaskStatus } from '../../tasks/taskStatus';
 import { DEFAULT_TASK_STATUSES } from '../../tasks/taskStatus';
 import { Icon } from './Icon';
@@ -40,6 +38,9 @@ export function ToolbarBar(): JSX.Element {
 	const filter = useCalendarStore((s) => s.viewFilters[scope]);
 	const setViewType = useCalendarStore((s) => s.setViewType);
 	const setCurrentDate = useCalendarStore((s) => s.setCurrentDate);
+	const weekWindowStart = useCalendarStore((s) => s.weekWindowStart);
+	const setWeekWindowStart = useCalendarStore((s) => s.setWeekWindowStart);
+	const setWeekWindow = useCalendarStore((s) => s.setWeekWindow);
 	const setStatusFilter = useCalendarStore((s) => s.setStatusFilter);
 	const setTagFilter = useCalendarStore((s) => s.setTagFilter);
 	const setSort = useCalendarStore((s) => s.setSort);
@@ -56,6 +57,11 @@ export function ToolbarBar(): JSX.Element {
 			case 'year': return String(currentDate.getFullYear());
 			case 'month': return MONTH_ABBR()[currentDate.getMonth()];
 			case 'week': {
+				// 滚动窗口态：窗口可横跨两周，W 周号会误导，只显示日期区间
+				if (weekWindowStart) {
+					const win = getWeekFromStart(weekWindowStart, startOnMonday);
+					return `${formatDate(win.startDate, 'MM/dd')}-${formatDate(win.endDate, 'MM/dd')}`;
+				}
 				const week = getWeekOfDate(currentDate, undefined, startOnMonday);
 				return `W${week.weekNumber}(${formatDate(week.startDate, 'MM/dd')}-${formatDate(week.endDate, 'MM/dd')})`;
 			}
@@ -63,7 +69,7 @@ export function ToolbarBar(): JSX.Element {
 			case 'task': return i18n.t('views.taskView.title');
 			case 'gantt': return i18n.t('views.ganttView.title');
 		}
-	}, [viewType, currentDate, startOnMonday]);
+	}, [viewType, currentDate, startOnMonday, weekWindowStart]);
 
 	// ===== 导航 =====
 	const navigate = (dir: -1 | 1) => {
@@ -71,7 +77,23 @@ export function ToolbarBar(): JSX.Element {
 		switch (viewType) {
 			case 'year': d.setFullYear(d.getFullYear() + dir); break;
 			case 'month': d.setMonth(d.getMonth() + dir); break;
-			case 'week': d.setDate(d.getDate() + 7 * dir); break;
+			// 周视图：真滚动窗口，每次左右移动 2 天。
+			// 不能只把 currentDate +2——WeekView 会把 currentDate 吸附到 startOfWeek，
+			// 只要没跨周边界就仍显示同一周，位移被抹平（表现为"点了没反应"）。
+			// 因此显式推进 weekWindowStart（7 天窗口起点，可为任意一天）。
+			case 'week': {
+				const base = weekWindowStart ?? getWeekOfDate(currentDate, undefined, startOnMonday).startDate;
+				const next = new Date(base);
+				next.setDate(next.getDate() + 2 * dir);
+				next.setHours(0, 0, 0, 0);
+				// currentDate 同步落到新窗口第 3 天，保证「新建任务」等用 currentDate 的入口
+				// 落在可见窗口内，且再次点箭头时基准连续。
+				// 必须用原子 setWeekWindow：分开调用会被 setCurrentDate 清空 weekWindowStart
+				const anchor = new Date(next);
+				anchor.setDate(anchor.getDate() + 2);
+				setWeekWindow(next, anchor);
+				return;
+			}
 			case 'day': d.setDate(d.getDate() + dir); break;
 			default: return;
 		}
@@ -80,6 +102,8 @@ export function ToolbarBar(): JSX.Element {
 
 	const goToday = () => {
 		if (viewType === 'task' || viewType === 'gantt') return;
+		// 回今天同时清掉滚动窗口偏移，回到标准周对齐
+		setWeekWindowStart(null);
 		setCurrentDate(new Date());
 	};
 
@@ -133,12 +157,10 @@ export function ToolbarBar(): JSX.Element {
 	const sortMenuSections = (): DropdownMenuSection[] => {
 		const fields: Array<{ key: SortField; label: string }> = [
 			{ key: 'dueDate', label: i18n.t('toolbar.sort.options.dueDate') },
-			{ key: 'priority', label: i18n.t('toolbar.sort.options.priority') },
 			{ key: 'description', label: i18n.t('toolbar.sort.options.description') },
 			{ key: 'createdDate', label: i18n.t('toolbar.sort.options.createdDate') },
 			{ key: 'startDate', label: i18n.t('toolbar.sort.options.startDate') },
 			{ key: 'scheduledDate', label: i18n.t('toolbar.sort.options.scheduledDate') },
-			{ key: 'completionDate', label: i18n.t('toolbar.sort.options.completionDate') },
 		];
 		const items: MenuItemDef[] = fields.map((f) => ({
 			key: f.key,
@@ -160,8 +182,6 @@ export function ToolbarBar(): JSX.Element {
 			{ key: 'startDate', label: i18n.t('toolbar.fieldSelector.startDate') },
 			{ key: 'scheduledDate', label: i18n.t('toolbar.fieldSelector.scheduledDate') },
 			{ key: 'dueDate', label: i18n.t('toolbar.fieldSelector.dueDate') },
-			{ key: 'completionDate', label: i18n.t('toolbar.fieldSelector.completionDate') },
-			{ key: 'cancelledDate', label: i18n.t('toolbar.fieldSelector.cancelledDate') },
 		];
 		const current = plugin.settings.taskViewTimeFieldFilter || 'dueDate';
 		return [{
@@ -215,7 +235,6 @@ export function ToolbarBar(): JSX.Element {
 		sections.push({
 			items: [
 				{ key: '__settings__', icon: 'settings', title: i18n.t('toolbar.settingsButton.ariaLabel'), onClick: openSettings },
-				{ key: '__sync__', icon: 'cloud-download', title: i18n.t('toolbar.syncButton.defaultTitle'), onClick: () => void syncFeishuTasks(plugin as GanttCalendarPlugin) },
 				{ key: '__refresh__', icon: 'refresh-cw', title: i18n.t('toolbar.refresh.refreshTask'), onClick: () => void handleRefresh() },
 			],
 		});
@@ -483,16 +502,6 @@ export function ToolbarBar(): JSX.Element {
 									icon="settings"
 									label={i18n.t('toolbar.settingsButton.ariaLabel')}
 									onClick={openSettings}
-								/>
-							</div>
-
-							<div className={ToolbarClasses.components.navButtons.group}>
-								<ToolbarBtn
-									icon="cloud-download"
-									label={i18n.t('toolbar.syncButton.defaultTitle')}
-									onClick={() => {
-										void syncFeishuTasks(plugin as GanttCalendarPlugin);
-									}}
 								/>
 							</div>
 

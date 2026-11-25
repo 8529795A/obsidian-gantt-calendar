@@ -83,7 +83,7 @@ export function DailyTimelinePanel(): JSX.Element {
 	const endField = plugin.settings.ganttEndField || 'dueDate';
 	const enabledFormats = plugin.settings.enabledTaskFormats || [];
 
-	const candidates = useMemo(() => tasks.filter((t) => !t.cancelled), [tasks]);
+	const candidates = useMemo(() => tasks, [tasks]);
 	const model = useMemo(() => (
 		buildDayTimelineModel(candidates, day, startField, endField)
 	), [candidates, day, startField, endField]);

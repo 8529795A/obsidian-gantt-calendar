@@ -8,10 +8,8 @@ import type { GanttCalendarSettings } from '../../../settings/types';
 export function buildSidebarConfig(settings: GanttCalendarSettings): TaskCardConfig {
 	return {
 		viewModifier: 'sidebar',
-		showCheckbox: settings.sidebarShowCheckbox,
 		showDescription: true,
 		showTags: settings.sidebarShowTags,
-		showPriority: settings.sidebarShowPriority,
 		showFileLocation: settings.sidebarShowFileLocation,
 		showWarning: false,
 		showTicktick: settings.sidebarShowTicktick,

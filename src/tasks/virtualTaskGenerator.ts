@@ -8,6 +8,7 @@
 import { GCTask, getTaskDateField, setTaskDateField, resolveAnchorDateField } from '../types';
 import type { DateFieldType } from '../settings/types';
 import { parseRepeatRule, getOccurrencesInRange, ParsedRecurrenceRule } from './recurrenceCalculator';
+import { DEFAULT_TASK_STATUSES } from './taskStatus';
 
 /**
  * 虚拟任务元数据
@@ -60,10 +61,6 @@ export function generateVirtualInstances(
     for (const task of tasks) {
         // 跳过没有 repeat 规则的任务
         if (!task.repeat) continue;
-        // 跳过已完成的任务
-        if (task.completed || task.status === 'done' || task.status === 'canceled') continue;
-        // 跳过已取消的任务
-        if (task.cancelled) continue;
 
         // 获取基准日期（未指定字段时按锚定回退链解析）
         const baseField = dateField ?? resolveAnchorDateField(task);
@@ -123,13 +120,7 @@ function createVirtualTask(
         advanceDateFieldWithOffset(virtualTask, sourceTask, sourceDateValue, occurrenceDate, 'scheduledDate');
         advanceDateFieldWithOffset(virtualTask, sourceTask, sourceDateValue, occurrenceDate, 'dueDate');
     }
-
-    // 重置完成状态
-    virtualTask.completed = false;
-    virtualTask.status = 'todo';
-    virtualTask.cancelled = false;
-    virtualTask.completionDate = undefined;
-    virtualTask.cancelledDate = undefined;
+    virtualTask.status = DEFAULT_TASK_STATUSES[0]?.key ?? 'important';
 
     // 存储虚拟任务元数据
     virtualTaskMetadata.set(virtualTask, {

@@ -50,15 +50,15 @@ export interface FormatDetectionResult {
  * @example
  * ```ts
  * // Tasks 格式
- * detectFormat("任务 ⏫ 📅 2024-01-15", ["tasks", "dataview"])
+ * detectFormat("任务 📅 2024-01-15", ["tasks", "dataview"])
  * // 返回: 'tasks'
  *
  * // Dataview 格式
- * detectFormat("任务 [priority:: high] [due:: 2024-01-15]", ["tasks", "dataview"])
+ * detectFormat("任务 [due:: 2024-01-15]", ["tasks", "dataview"])
  * // 返回: 'dataview'
  *
  * // 混合格式（警告）
- * detectFormat("任务 ⏫ [due:: 2024-01-15]", ["tasks", "dataview"])
+ * detectFormat("任务 [due:: 2024-01-15]", ["tasks", "dataview"])
  * // 返回: 'mixed'
  *
  * // 无格式标记
@@ -66,7 +66,7 @@ export interface FormatDetectionResult {
  * // 返回: undefined
  *
  * // 仅启用 Tasks 格式时，Dataview 格式不会被识别
- * detectFormat("任务 [priority:: high]", ["tasks"])
+ * detectFormat("任务", ["tasks"])
  * // 返回: undefined
  * ```
  */
@@ -88,7 +88,7 @@ export function detectFormat(
  *
  * @example
  * ```ts
- * detectFormatDetailed("任务 ⏫ 📅 2024-01-15", ["tasks", "dataview"])
+ * detectFormatDetailed("任务 📅 2024-01-15", ["tasks", "dataview"])
  * // 返回: {
  * //   format: 'tasks',
  * //   isMixed: false,
@@ -96,7 +96,7 @@ export function detectFormat(
  * //   hasDataviewFormat: false
  * // }
  *
- * detectFormatDetailed("任务 ⏫ [due:: 2024-01-15]", ["tasks", "dataview"])
+ * detectFormatDetailed("任务 [due:: 2024-01-15]", ["tasks", "dataview"])
  * // 返回: {
  * //   format: 'tasks',  // 混合时默认使用 tasks
  * //   isMixed: true,
@@ -153,7 +153,7 @@ export function detectFormatDetailed(
  * ```ts
  * hasTasksFormat("任务 ⏫")              // true
  * hasTasksFormat("任务 📅 2024-01-15")    // true
- * hasTasksFormat("任务 [priority::]")    // false
+ * hasTasksFormat("任务 [due::]")    // false
  * ```
  */
 export function hasTasksFormat(content: string): boolean {
@@ -170,7 +170,7 @@ export function hasTasksFormat(content: string): boolean {
  *
  * @example
  * ```ts
- * hasDataviewFormat("任务 [priority:: high]")  // true
+ * hasDataviewFormat("任务")  // true
  * hasDataviewFormat("任务 📅 2024-01-15")       // false
  * ```
  */
@@ -189,9 +189,9 @@ export function hasDataviewFormat(content: string): boolean {
  *
  * @example
  * ```ts
- * isMixedFormat("任务 ⏫ [due:: 2024-01-15]")  // true
- * isMixedFormat("任务 ⏫ 📅 2024-01-15")       // false
- * isMixedFormat("任务 [priority:: high]")     // false
+ * isMixedFormat("任务 [due:: 2024-01-15]")  // true
+ * isMixedFormat("任务 📅 2024-01-15")       // false
+ * isMixedFormat("任务")     // false
  * ```
  */
 export function isMixedFormat(content: string): boolean {

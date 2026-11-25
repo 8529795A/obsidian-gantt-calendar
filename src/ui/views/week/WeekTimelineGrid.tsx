@@ -5,16 +5,13 @@ import type { GCTask } from '../../../types';
 import { resolveAnchorDateField } from '../../../types';
 import type { DateFieldType } from '../../../settings/types';
 import type { TaskCardConfig } from '../../../components/TaskCard/TaskCardConfig';
-import { WeekViewClasses, ContextMenuClasses, setCssProps } from '../../../utils/bem';
+import { WeekViewClasses } from '../../../utils/bem';
 import { usePlugin, useApp } from '../../pluginContext';
 import { useTaskTooltip } from '../../components/TooltipProvider';
 import { TaskCard } from '../../components/TaskCard';
-import { Icon } from '../../components/Icon';
 import { taskKey } from '../../utils/taskKey';
 import { updateTaskProperties } from '../../../tasks/taskUpdater';
-import { isVirtualTask } from '../../../tasks/virtualTaskGenerator';
 import type { TaskUpdates } from '../../../tasks/taskSerializer';
-import { openCreateTaskModal } from '../../modals/TaskFormModal';
 import { i18n } from '../../../i18n/i18n';
 import { Logger } from '../../../utils/logger';
 import {
@@ -24,31 +21,18 @@ import {
 	type DaySegment,
 	getTaskInterval,
 	clampSingleFieldWrite,
-	clampForwardPointEnd,
-	minutesToPx,
-	pxToMinutes,
-	snapMinutes,
 	formatMinutes,
 	DAY_PX,
-	MIN_DURATION_MIN,
 	MINUTES_PER_DAY,
 } from './timelineModel';
-import { useBlockResize, isBlockResizing, setBlockDragMeta, getBlockDragMeta, clearBlockDragMeta } from './useBlockResize';
+import { useBlockResize, setBlockDragMeta, clearBlockDragMeta } from './useBlockResize';
 import { useCanvasTouchDrag } from './useCanvasTouchDrag';
-import { LONG_PRESS_MS, attachTouchScrollGuard, type CreateGesture } from './timelineTouchCreate';
 
 /** 全天行单行高度（卡片 24px + 间距 4px，与 CSS 令牌对应） */
 const ALLDAY_ROW_PX = 28;
 
 /** 折叠态全天行可见的横跨条行数，超出收进 "+N" 折叠行 */
 const ALLDAY_COLLAPSED_LANES = 3;
-
-/**
- * 创建手势的像素位移阈值：超过该位移才视为拖拽选区。
- * 不能用吸附步长判断——点击时 1-2px 抖动就可能让吸附分钟跨过舍入中点跳一格，
- * 导致按下瞬间 1 小时预览坍缩为 15 分钟选区（对齐甘特拖拽的 3px hasMoved 模式）
- */
-const CREATE_DRAG_THRESHOLD_PX = 5;
 
 export interface WeekTimelineDayInfo {
 	date: Date;
@@ -149,7 +133,6 @@ export function WeekTimelineGrid({
 	const gridRef = useRef<HTMLDivElement | null>(null);
 
 	const hasToday = days.some((d) => d.isToday);
-	const allDayLabel = i18n.t('views.weekView.allDay');
 
 	/** 本周第 dayIndex 天的 00:00 */
 	const dayDate = useCallback((dayIndex: number): Date => {
@@ -223,42 +206,49 @@ export function WeekTimelineGrid({
 		}
 
 		void (async () => {
-			const ok = await persistTaskUpdate(block.task, updates, precision, 'views.dayView.updateTimeFailed');
-			if (!ok) {
-				// 写回失败：还原乐观样式
-				blockEl.style.top = `${minutesToPx(seg.startMin)}px`;
-				blockEl.style.height = `${minutesToPx(seg.endMin - seg.startMin)}px`;
-			}
+			// 列表式布局无绝对定位，写回失败无需还原样式（React 重渲染即为真值）
+			await persistTaskUpdate(block.task, updates, precision, 'views.dayView.updateTimeFailed');
 		})();
 	}, [dayDate, atMinutes, startField, endField, persistTaskUpdate]);
 
 	const beginResize = useBlockResize(commitResize);
 
-	// ===== 拖放落点：整体平移块（保留时长与精度；minutes = 块上边缘的吸附时刻） =====
-	const commitBlockMove = useCallback((task: GCTask, dayIndex: number, minutes: number): void => {
+	// ===== 拖放落点：整体平移块（保留时长与精度） =====
+	// minutes === null（列表式布局拖拽）：保留任务原有时刻，只把日期换到目标日
+	const commitBlockMove = useCallback((task: GCTask, dayIndex: number, minutes: number | null): void => {
 		const day = dayDate(dayIndex);
 		const interval = getTaskInterval(task, startField, endField);
 		const updates: Partial<Record<DateFieldType, Date>> = {};
 		let precision: Partial<Record<DateFieldType, 'day' | 'time'>> = {};
+
+		// 保留原时刻：以任务自身起点（或锚点）的时分作为落点分钟
+		const keepTimeMinutes = interval
+			? interval.start.getHours() * 60 + interval.start.getMinutes()
+			: (() => {
+				const f = resolveAnchorDateField(task);
+				const d = f ? task[f] : undefined;
+				return d ? d.getHours() * 60 + d.getMinutes() : 0;
+			})();
+		const targetMin = minutes === null ? keepTimeMinutes : minutes;
 
 		if (interval && interval.kind === 'point') {
 			// 拖动点任务 = 双写起止并自动升级为区间任务：
 			// 跨天拖动时若只写锚点字段（如仅 📅），残留的旧 🛫 仅日期字段会让任务
 			// 变成 ≥24h 跨日区间；上边缘落点为起点，+ 时长为终点，两端均 time 精度
 			const durationMin = Math.round((interval.end.getTime() - interval.start.getTime()) / 60000);
-			const anchorMin = Math.max(0, Math.min(minutes, MINUTES_PER_DAY - durationMin));
+			const anchorMin = Math.max(0, Math.min(targetMin, MINUTES_PER_DAY - durationMin));
 			updates[startField] = atMinutes(day, anchorMin);
 			updates[endField] = atMinutes(day, anchorMin + durationMin);
 			precision = { [startField]: 'time', [endField]: 'time' };
 		} else if (interval) {
-			// 区间任务：块上边缘落到落点后整体平移，day 精度端点保持整天语义。
+			// 区间任务：整体平移，day 精度端点保持整天语义。
 			// 仅原本就同日的区间才做"当日容纳"钳制——跨夜区间允许继续跨夜
 			const durationMin = Math.round((interval.end.getTime() - interval.start.getTime()) / 60000);
 			const dayOf = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
 			const sameDayOrigin = dayOf(interval.start) === dayOf(interval.end);
 			const anchorMin = sameDayOrigin && durationMin <= MINUTES_PER_DAY
-				? Math.max(0, Math.min(minutes, MINUTES_PER_DAY - durationMin))
-				: minutes;
+				? Math.max(0, Math.min(targetMin, MINUTES_PER_DAY - durationMin))
+				: targetMin;
 			const newStart = atMinutes(day, anchorMin);
 			const shiftMs = newStart.getTime() - interval.start.getTime();
 			const startIsTime = task.datePrecision?.[startField] === 'time';
@@ -271,7 +261,7 @@ export function WeekTimelineGrid({
 			// 全天任务 / 外部视图拖入：落点即时刻（锚定字段转 time 精度，无锚点写 gantt 终点字段）；
 			// 对端钳制：落点越过对端点所在日时钳到对端点日（保留落点时刻），避免制造倒置数据
 			const anchorField = resolveAnchorDateField(task) ?? endField;
-			updates[anchorField] = clampSingleFieldWrite(task, anchorField, atMinutes(day, minutes), startField, endField);
+			updates[anchorField] = clampSingleFieldWrite(task, anchorField, atMinutes(day, targetMin), startField, endField);
 			precision = { [anchorField]: 'time' };
 		}
 
@@ -301,59 +291,18 @@ export function WeekTimelineGrid({
 	}, [dayDate, startField, endField, persistTaskUpdate]);
 
 	// 触屏整块拖动（长按 500ms 起拖；提交与落点预览复用现有链路）
+	// 列表式布局：不按像素推算时刻，落点只决定日期（resolveMinutesFromPointer=false）
 	const beginBlockTouchPress = useCanvasTouchDrag({
 		onCommit: commitBlockMove,
 		setPreview: setDropPreview,
 		columnSelector: '.' + WeekViewClasses.elements.dayCol,
+		resolveMinutesFromPointer: false,
 	});
 
-	// ===== 空白快速创建 =====
-	const handleQuickCreate = useCallback((payload: QuickCreate): void => {
-		const dayInfo = days[payload.dayIndex];
-		if (!dayInfo) return;
-		if (payload.type === 'range') {
-			openCreateTaskModal({
-				app,
-				plugin,
-				targetDate: dayInfo.date,
-				targetRange: { start: atMinutes(dayInfo.date, payload.startMin), end: atMinutes(dayInfo.date, payload.endMin) },
-				onSuccess: refreshTasks,
-			});
-			return;
-		}
-		// 单击 = 前向 1 小时区间：预填 startDate + dueDate（createdDate 由弹窗默认当日），
-		// 保存后为双时刻区间任务，渲染与 hover 虚拟框完全重合，不留空开始字段。
-		// 下方空隙不足默认时长时按空隙收缩（与 ghost 预览同源判定）；无空隙不弹窗
-		const min = payload.min;
-		const daySegs = model.days[payload.dayIndex] || [];
-		const endMin = clampForwardPointEnd(min, daySegs.map((s) => s.seg));
-		if (endMin <= min) return;
-		openCreateTaskModal({
-			app,
-			plugin,
-			targetDate: dayInfo.date,
-			targetRange: { start: atMinutes(dayInfo.date, min), end: atMinutes(dayInfo.date, endMin) },
-			onSuccess: refreshTasks,
-		});
-	}, [app, plugin, days, atMinutes, refreshTasks, model]);
+	// ===== 空白快速创建：已关闭（列表式布局无时间轴，无法从位置推算时刻） =====
+	// 新建任务请用工具栏「+」按钮，时间在弹窗里填写
 
-	// ===== 当前时间指示线（按分钟直接计算，每 30s 重画） =====
-	useEffect(() => {
-		if (!hasToday) return;
-		const draw = () => {
-			const grid = gridRef.current;
-			if (!grid) return;
-			const line = grid.querySelector<HTMLElement>(`.${WeekViewClasses.elements.currentTimeLine}`);
-			const col = grid.querySelector<HTMLElement>(`.${WeekViewClasses.elements.dayCol}`);
-			if (!line || !col) return;
-			const now = new Date();
-			line.style.top = `${col.offsetTop + minutesToPx(now.getHours() * 60 + now.getMinutes())}px`;
-			setCssProps(line, { display: 'block' });
-		};
-		draw();
-		const timer = window.setInterval(draw, 30_000);
-		return () => window.clearInterval(timer);
-	}, [hasToday, updateSeq, weekStart, model]);
+	// ===== 当前时间指示线：已移除（无时间轴，无对应位置） =====
 
 	// ===== 全天行：lane 布局不设上限，渲染折叠（极端重叠不挤压时间网格） =====
 	const totalAlldayLanes = useMemo(() => (
@@ -405,7 +354,8 @@ export function WeekTimelineGrid({
 			ref={gridRef}
 			style={{
 				'--gc-tl-hour-h': `${DAY_PX / 24}px`,
-				gridTemplateColumns: `48px repeat(${colCount}, 1fr)`,
+				// 无左侧时间刻度列：所有列等分（表头/全天行/日列共享同一栅格）
+				gridTemplateColumns: `repeat(${colCount}, 1fr)`,
 				// 触屏：纵向滚动交给浏览器，横向位移留给 swipe 翻页
 				touchAction: onSwipe ? 'pan-y' : undefined,
 			} as CSSProperties}
@@ -413,14 +363,13 @@ export function WeekTimelineGrid({
 			onPointerUp={onSwipe ? handleGridPointerUp : undefined}
 		>
 			{/* 表头（仅渲染可见日窗口） */}
-			<div className={WeekViewClasses.elements.headerSpacer} style={{ gridColumn: '1', gridRow: '1' }} />
 			{visibleIdxs.map((dayIdx, pos) => {
 				const day = days[dayIdx];
 				return (
 					<div
 						key={`week-h-${dayIdx}`}
 						className={`${WeekViewClasses.elements.headerCell}${day.isToday ? ` ${WeekViewClasses.modifiers.today}` : ''}`}
-						style={{ gridColumn: `${pos + 2}`, gridRow: '1' }}
+						style={{ gridColumn: `${pos + 1}`, gridRow: '1' }}
 					>
 						<div className={WeekViewClasses.elements.dayName}>{dayNames[day.weekday]}</div>
 						<div className={WeekViewClasses.elements.dayNumber}>{day.day.toString()}</div>
@@ -431,17 +380,17 @@ export function WeekTimelineGrid({
 				);
 			})}
 
-			{/* 全天行 */}
-			<div className={WeekViewClasses.elements.alldayGutter} style={{ gridColumn: '1', gridRow: '2' }}>
-				{allDayLabel}
-			</div>
+			{/* 全天行：栅格已无时间刻度列（7 列全是日期），标签改为绝对定位贴在左上角，
+			    不再占用栅格列——否则会与第 1 列日期挤位、导致下方任务块整体错位一格 */}
 			<div
 				className={WeekViewClasses.elements.alldayRow}
-				style={{ gridColumn: '2 / -1', gridRow: '2', height: `${alldayRowHeight}px` }}
+				style={{ gridColumn: '1 / -1', gridRow: '2', height: `${alldayRowHeight}px` }}
 				onDragOver={handleAlldayDragOver}
 				onDragLeave={handleAlldayDragLeave}
 				onDrop={handleAlldayDrop}
 			>
+				{/* 「全天」文字标签已移除（2026-11-22）：它绝对定位贴在左上角会压住第一列，
+				    而全天行的语义已由横跨条本身表达 */}
 				{visibleIdxs.map((dayIdx, pos) => {
 					const day = days[dayIdx];
 					return (
@@ -506,16 +455,9 @@ export function WeekTimelineGrid({
 			) : null}
 		</div>
 
-		{/* 时间沟槽：24 个整点标签 */}
-			<div className={WeekViewClasses.elements.timeGutterSlot} style={{ gridColumn: '1', gridRow: '3' }}>
-				{Array.from({ length: 24 }, (_, hour) => (
-					<div key={`week-g-${hour}`} className={WeekViewClasses.elements.timeGutterLabel}>
-						{`${String(hour).padStart(2, '0')}:00`}
-					</div>
-				))}
-			</div>
+		{/* 时间沟槽已移除：周视图改为「按时间顺序堆叠 + 自适应高度」的列表式布局 */}
 
-			{/* 日列（连续画布，仅渲染可见日窗口；dayIndex 为周索引，colPos 为渲染列位） */}
+			{/* 日列（按时间顺序堆叠的块列表；dayIndex 为周索引，colPos 为渲染列位） */}
 			{visibleIdxs.map((dayIdx, pos) => (
 				<DayColumn
 					key={`week-col-${dayIdx}`}
@@ -526,7 +468,6 @@ export function WeekTimelineGrid({
 					config={config}
 					beginResize={beginResize}
 					beginTouchPress={beginBlockTouchPress}
-					onQuickCreate={handleQuickCreate}
 					onBlockMove={commitBlockMove}
 					dropLine={dropLine}
 					setDropLine={setDropLine}
@@ -548,22 +489,7 @@ export function WeekTimelineGrid({
 	);
 }
 
-// ===== 日列（连续画布 + 时间块 + ghost 创建） =====
-
-/** 事件目标是否位于时间块内（块上的事件不触发空白创建/ghost） */
-function isInsideBlock(target: EventTarget | null): boolean {
-	return !!(target instanceof Element && target.closest(`.${WeekViewClasses.elements.timeBlock}`));
-}
-
-/**
- * 页面上是否存在打开的右键菜单。
- * ContextMenuTrigger 会 stopPropagation 掉 contextmenu 事件（列内收不到），
- * 菜单又 portal 到 body 且其 mousemove 会沿 React 树冒泡进列内——
- * 只能直接探测 DOM，不能依赖事件冒泡传递"菜单已打开"状态
- */
-function isContextMenuOpen(): boolean {
-	return !!document.querySelector(`.${ContextMenuClasses.container}`);
-}
+// ===== 日列（按时间顺序堆叠的块列表） =====
 
 interface DayColumnProps {
 	/** 周内索引（0-6，模型/状态键） */
@@ -575,8 +501,7 @@ interface DayColumnProps {
 	config: TaskCardConfig;
 	beginResize: ReturnType<typeof useBlockResize>;
 	beginTouchPress: ReturnType<typeof useCanvasTouchDrag>;
-	onQuickCreate: (payload: QuickCreate) => void;
-	onBlockMove: (task: GCTask, dayIndex: number, minutes: number) => void;
+	onBlockMove: (task: GCTask, dayIndex: number, minutes: number | null) => void;
 	dropLine: DropLineState | null;
 	setDropLine: Dispatch<SetStateAction<DropLineState | null>>;
 	dropPreview: DropPreviewState | null;
@@ -596,7 +521,6 @@ function DayColumn({
 	config,
 	beginResize,
 	beginTouchPress,
-	onQuickCreate,
 	onBlockMove,
 	dropLine,
 	setDropLine,
@@ -609,226 +533,25 @@ function DayColumn({
 	onCardRefresh,
 }: DayColumnProps): JSX.Element {
 	const colRef = useRef<HTMLDivElement | null>(null);
-	const ghostRef = useRef<HTMLDivElement | null>(null);
-	const ghostLabelRef = useRef<HTMLSpanElement | null>(null);
-	const createRef = useRef<CreateGesture | null>(null);
-	/** document 级监听用稳定包装：业务回调重建时仍能正确解绑 */
-	const finishCreateRef = useRef<(e: PointerEvent) => void>(() => {});
-	const cancelCreateRef = useRef<() => void>(() => {});
-	const onDocumentPointerUp = useCallback((e: PointerEvent) => finishCreateRef.current(e), []);
-	const onDocumentPointerCancel = useCallback(() => cancelCreateRef.current(), []);
 
-	const minutesFromEvent = useCallback((clientY: number): number => {
-		const col = colRef.current;
-		if (!col) return 0;
-		const rect = col.getBoundingClientRect();
-		return snapMinutes(pxToMinutes(clientY - rect.top), false);
-	}, []);
+	// 日列内块宽仅约 1/7 屏宽：标签独占首行且最多 2 个，其余折叠为 "+N"，
+	// 避免标签行过长把块撑高。全天横跨条可跨多列、宽度充裕，不套用此限制。
+	const blockConfig = useMemo<TaskCardConfig>(
+		() => ({ ...config, maxTags: 2 }),
+		[config],
+	);
 
-	/** 直接 DOM 更新 ghost（避免 60Hz mousemove 触发 React 重渲染）；钳制在 [0, 24:00] 内 */
-	const showGhost = useCallback((startMin: number, endMin: number, dragging: boolean): void => {
-		const ghost = ghostRef.current;
-		const label = ghostLabelRef.current;
-		if (!ghost) return;
-		const clampedEnd = Math.min(Math.max(endMin, startMin + 1), MINUTES_PER_DAY);
-		setCssProps(ghost, { display: 'block' });
-		ghost.style.top = `${minutesToPx(startMin)}px`;
-		ghost.style.height = `${minutesToPx(clampedEnd - startMin)}px`;
-		ghost.classList.toggle(WeekViewClasses.modifiers.ghostDragging, dragging);
-		if (label) label.textContent = dragging
-			? `${formatMinutes(startMin)} – ${formatMinutes(clampedEnd)}`
-			: formatMinutes(startMin);
-	}, []);
+	// ===== 空白点击创建已关闭（列表式布局无时间轴，无法从位置推算时刻） =====
+	// 保留整块拖放（跨天平移，时间不变）
 
-	const hideGhost = useCallback((): void => {
-		const ghost = ghostRef.current;
-		if (ghost) setCssProps(ghost, { display: 'none' });
-	}, []);
-
-	/** 光标处快速创建的可用终点（ghost 与创建同源）：钳到 24:00 与下一个块起点 */
-	const quickCreateEnd = useCallback((min: number): number => {
-		return clampForwardPointEnd(min, daySegs.map((s) => s.seg));
-	}, [daySegs]);
-
-	// ===== hover ghost / 拖拽选区 =====
-	const handleMouseMove = useCallback((e: ReactPointerEvent) => {
-		if (isInsideBlock(e.target)) {
-			// 选区拖拽中指针掠过块上：ghost 保持（选区仍跟随指针）
-			if (!createRef.current) hideGhost();
-			return;
-		}
-		const minutes = minutesFromEvent(e.clientY);
-		const create = createRef.current;
-		if (create) {
-			// 触屏长按未完成：不绘制预览，移动由 touchmove 守卫判定是否为滚动
-			if (!create.armed) return;
-			create.lastMin = minutes;
-			// 像素位移超阈值才算拖拽选区（吸附步长对点击抖动过于敏感）
-			if (!create.moved && Math.abs(e.clientY - create.anchorY) > CREATE_DRAG_THRESHOLD_PX) {
-				create.moved = true;
-			}
-			if (!create.moved) {
-				// 抖动范围内：维持可用空隙预览（按下瞬间不坍缩）
-				showGhost(create.anchorMin, quickCreateEnd(create.anchorMin), true);
-				return;
-			}
-			showGhost(Math.min(create.anchorMin, minutes), Math.max(create.anchorMin, minutes), true);
-			return;
-		}
-		// 触屏手指在画布上移动属于滚动或长按等待，不显示 hover 预览
-		if (e.pointerType === 'touch') {
-			hideGhost();
-			return;
-		}
-		// DOM 物理包含校验：portal 浮层（右键菜单/弹窗）的 mousemove 虽从 React 树冒泡进列内，
-		// 但其目标不在本列 DOM 中，不算画布 hover（contextmenu 被 trigger 截断，菜单状态只能直接探测）
-		const col = colRef.current;
-		if (!col || !col.contains(e.target as Node)) {
-			hideGhost();
-			return;
-		}
-		// 菜单打开 / 块边缘 resize 进行中：不出 hover 提示。
-		// ghost 终点钳到下一个块起点（与点击创建同源判定）：空隙不足 1 小时按空隙收缩，
-		// 光标处即块起点（无空隙）则不显示
-		if (isContextMenuOpen() || isBlockResizing()) {
-			hideGhost();
-			return;
-		}
-		// hover：可用空隙 ghost + 时刻标签
-		const endMin = quickCreateEnd(minutes);
-		if (endMin <= minutes) {
-			hideGhost();
-			return;
-		}
-		showGhost(minutes, endMin, false);
-	}, [minutesFromEvent, showGhost, hideGhost, quickCreateEnd]);
-
-	const handleMouseLeave = useCallback(() => {
-		if (!createRef.current) hideGhost();
-	}, [hideGhost]);
-
-	/** 结束手势：统一清理监听、长按定时器、滚动拦截与预览 */
-	const endCreateGesture = useCallback((): CreateGesture | null => {
-		const create = createRef.current;
-		createRef.current = null;
-		document.removeEventListener('pointerup', onDocumentPointerUp);
-		document.removeEventListener('pointercancel', onDocumentPointerCancel);
-		if (create) {
-			window.clearTimeout(create.timer);
-			create.guard?.dispose();
-		}
-		hideGhost();
-		return create;
-	}, [hideGhost, onDocumentPointerUp, onDocumentPointerCancel]);
-
-	const finishCreate = useCallback((e: PointerEvent): void => {
-		const create = endCreateGesture();
-		// 触屏短按：长按未完成时松手，不创建任务
-		if (!create || !create.armed) return;
-		// 横滑翻页与快速创建互斥：横向位移达 swipe 阈值（|dx|>40 且 |dx|>1.5|dy|，
-		// 与 handleGridPointerUp 判定同源）时视为翻页手势，静默放弃创建，不弹窗
-		const dx = e.clientX - create.anchorX;
-		const dy = e.clientY - create.anchorY;
-		if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) return;
-		if (create.moved && Math.abs(create.lastMin - create.anchorMin) >= MIN_DURATION_MIN) {
-			const start = Math.min(create.anchorMin, create.lastMin);
-			const end = Math.max(create.anchorMin, create.lastMin);
-			onQuickCreate({ type: 'range', dayIndex, startMin: start, endMin: end });
-		} else {
-			onQuickCreate({ type: 'point', dayIndex, min: create.anchorMin });
-		}
-	}, [dayIndex, onQuickCreate, endCreateGesture]);
-
-	/** 触屏滚动接管手势（pointercancel）：静默放弃创建，不弹窗 */
-	const cancelCreate = useCallback((): void => {
-		endCreateGesture();
-	}, [endCreateGesture]);
-
-	finishCreateRef.current = finishCreate;
-	cancelCreateRef.current = cancelCreate;
-
-	// 组件卸载时清理未结束的手势，避免定时器、监听与 touch-action 残留
-	useEffect(() => () => {
-		endCreateGesture();
-	}, [endCreateGesture]);
-
-	const handleMouseDown = useCallback((e: ReactPointerEvent) => {
-		if (e.button !== 0 || isInsideBlock(e.target)) return;
-		// 菜单打开期间：列内的首次点击仅负责关闭菜单，不启动创建
-		if (isContextMenuOpen()) return;
-		// DOM 物理包含校验：portal 浮层（右键菜单/弹窗）的事件虽从 React 树冒泡进列内，
-		// 但其目标不在本列 DOM 中，不能视为画布上的按下
-		const col = colRef.current;
-		if (!col || !col.contains(e.target as Node)) return;
-		if (createRef.current) return; // 已有手势在进行（例如第二根手指按下）
-		const isTouch = e.pointerType === 'touch';
-		const anchorMin = minutesFromEvent(e.clientY);
-		const endMin = quickCreateEnd(anchorMin);
-		if (endMin <= anchorMin) return; // 光标处即下一个块起点：无空隙，不启动创建手势
-		const create: CreateGesture = {
-			anchorMin,
-			anchorX: e.clientX,
-			anchorY: e.clientY,
-			lastMin: anchorMin,
-			moved: false,
-			armed: !isTouch,
-			timer: 0,
-			guard: null,
-		};
-		createRef.current = create;
-		// 防御：上一手势未正常收尾时先解绑，避免重复触发
-		document.removeEventListener('pointerup', onDocumentPointerUp);
-		document.removeEventListener('pointercancel', onDocumentPointerCancel);
-		document.addEventListener('pointerup', onDocumentPointerUp);
-		document.addEventListener('pointercancel', onDocumentPointerCancel);
-
-		if (!isTouch) {
-			e.preventDefault();
-			// 按下瞬间维持 hover 的可用空隙块（仅切换激活样式），像素级拖动后才变为选区
-			showGhost(anchorMin, endMin, true);
-			return;
-		}
-
-		// 触屏：按下时既不显示预览也不阻止滚动，等长按完成再接管手势
-		create.guard = attachTouchScrollGuard(col, {
-			originX: e.clientX,
-			originY: e.clientY,
-			isArmed: () => !!createRef.current?.armed,
-			onAbandon: () => cancelCreateRef.current(),
-		});
-		create.timer = window.setTimeout(() => {
-			const active = createRef.current;
-			if (!active || active !== create) return;
-			active.armed = true;
-			active.guard?.arm();
-			navigator.vibrate?.(10);
-			showGhost(active.anchorMin, quickCreateEnd(active.anchorMin), true);
-		}, LONG_PRESS_MS);
-	}, [minutesFromEvent, showGhost, quickCreateEnd, onDocumentPointerUp, onDocumentPointerCancel]);
-
-	// ===== HTML5 拖放（整体平移；块拖动按块边缘落点 + 预览块，外部拖入按指针 + 指示线） =====
+	// ===== HTML5 拖放（整体平移：只改日期，保留原时间） =====
 	const handleDragOver = useCallback((e: ReactDragEvent) => {
 		e.preventDefault();
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 		setDragOverCol((prev) => (prev === dayIndex ? prev : dayIndex));
-		const meta = getBlockDragMeta();
-		if (meta) {
-			// 块拖动：落点预览 = 块上边缘吸附位置 + 任务时长（不出指针指示线）
-			setDropLine(null);
-			const col = colRef.current;
-			if (!col) return;
-			const topMin = snapMinutes(pxToMinutes(e.clientY - meta.offsetPx - col.getBoundingClientRect().top), false);
-			const endMin = Math.min(topMin + meta.durationMin, MINUTES_PER_DAY);
-			setDropPreview((prev) => (
-				prev && prev.dayIndex === dayIndex && prev.startMin === topMin ? prev : { dayIndex, startMin: topMin, endMin }
-			));
-			return;
-		}
-		// 外部拖入：指针吸附线
 		setDropPreview(null);
-		const min = minutesFromEvent(e.clientY);
-		setDropLine((prev) => (prev && prev.dayIndex === dayIndex && prev.min === min ? prev : { dayIndex, min }));
-	}, [dayIndex, minutesFromEvent, setDropLine, setDropPreview]);
+		setDropLine(null);
+	}, [dayIndex, setDropLine, setDropPreview, setDragOverCol]);
 
 	const handleDragLeave = useCallback((e: ReactDragEvent) => {
 		const related = e.relatedTarget as Node | null;
@@ -836,7 +559,7 @@ function DayColumn({
 		setDropLine(null);
 		setDropPreview(null);
 		setDragOverCol((prev) => (prev === dayIndex ? null : prev));
-	}, [dayIndex, setDropLine, setDropPreview]);
+	}, [dayIndex, setDropLine, setDropPreview, setDragOverCol]);
 
 	const handleDrop = useCallback((e: ReactDragEvent) => {
 		e.preventDefault();
@@ -850,47 +573,33 @@ function DayColumn({
 			Logger.error('WeekTimelineGrid', 'Drop source task not found:', taskId);
 			return;
 		}
-		// 块拖动：指针 - 抓取偏移 = 块上边缘位置；外部拖入：指针即块顶
-		const meta = getBlockDragMeta();
-		const topEdgeClientY = meta ? e.clientY - meta.offsetPx : e.clientY;
-		onBlockMove(task, dayIndex, minutesFromEvent(topEdgeClientY));
-	}, [tasks, dayIndex, minutesFromEvent, onBlockMove, setDropLine, setDropPreview]);
+		// 列表式布局：落点不再推算时刻，保留任务原时间，只改日期
+		clearBlockDragMeta();
+		onBlockMove(task, dayIndex, null);
+	}, [tasks, dayIndex, onBlockMove, setDropLine, setDropPreview, setDragOverCol]);
 
 	return (
 		<div
 			ref={colRef}
 			className={`${WeekViewClasses.elements.dayCol}${day.isToday ? ` ${WeekViewClasses.modifiers.dayColToday}` : ''}${dragOverCol === dayIndex ? ` ${WeekViewClasses.modifiers.dayColDragOver}` : ''}`}
 			data-day-idx={dayIndex}
-			style={{ gridColumn: `${colPos + 2}`, gridRow: '3', height: `${DAY_PX}px` }}
-			onPointerMove={handleMouseMove}
-			onMouseLeave={handleMouseLeave}
-			onPointerDown={handleMouseDown}
+			style={{ gridColumn: `${colPos + 1}`, gridRow: '3' }}
 			onDragOver={handleDragOver}
 			onDragLeave={handleDragLeave}
 			onDrop={handleDrop}
 		>
+			{/* 块按开始时间升序堆叠（daySegs 已排序），高度由内容自适应，不再依赖时间轴定位 */}
 			{daySegs.map(({ block, seg }) => {
-				const durationMin = seg.endMin - seg.startMin;
-				const resizable = !isVirtualTask(block.task);
 				const cls = [
 					WeekViewClasses.elements.timeBlock,
+					WeekViewClasses.modifiers.timeBlockFlow,
 					seg.continuesBefore ? WeekViewClasses.modifiers.timeBlockContinuesBefore : '',
 					seg.continuesAfter ? WeekViewClasses.modifiers.timeBlockContinuesAfter : '',
-					seg.stackedIndex > 0 ? WeekViewClasses.modifiers.timeBlockStacked : '',
 				].filter(Boolean).join(' ');
-				const style: CSSProperties = {
-					top: `${minutesToPx(seg.startMin)}px`,
-					height: `${minutesToPx(durationMin)}px`,
-					left: `calc(${(seg.lane / seg.laneCount) * 100}% + ${(seg.stackedIndex > 0 ? seg.stackedIndex * 3 : 0) + 1}px)`,
-					width: `calc(${100 / seg.laneCount}% - 2px)`,
-					zIndex: seg.lane + (seg.stackedIndex > 0 ? 4 : 1),
-				};
 				return (
 					<div
 						key={`${taskKey(block.task)}-d${dayIndex}`}
 						className={cls}
-						style={style}
-						onPointerDown={(e) => beginTouchPress(e, block, e.currentTarget)}
 						onDragStart={(e) => {
 							// 记录抓取信息：落点按块上边缘计算而非指针（WYSIWYG），
 							// 时长用于落点预览与后向点任务锚点（dragover 阶段 getData 不可用）
@@ -905,70 +614,27 @@ function DayColumn({
 							setDropPreview(null);
 						}}
 					>
-						{durationMin >= 30 ? (
-							<span className={WeekViewClasses.elements.timeBlockTime}>
-								{`${formatMinutes(seg.startMin)} – ${formatMinutes(seg.endMin)}`}
-							</span>
-						) : null}
-					<TaskCard
-						task={block.task}
-						config={config}
-						targetDate={day.date}
-						onClick={hideTooltip}
-						onRefresh={onCardRefresh}
-						// 触屏长按菜单由画布手势自管（长按未移动 → 合成 contextmenu），
-						// 禁用 TaskCard 内置长按，避免拖拽模式与菜单同时触发
-						disableLongPressMenu
-					/>
-						{/* 仅真实起止边缘有 resize 手柄（虚拟实例不可写回模板，禁编辑） */}
-						{!seg.continuesBefore && resizable ? (
-							<div
-								className={`${WeekViewClasses.elements.handle} ${WeekViewClasses.modifiers.handleTop}`}
-								onPointerDown={(e) => {
-									const col = colRef.current;
-									if (col && e.currentTarget.parentElement) {
-										beginResize(e, block, seg, 'top', col, e.currentTarget.parentElement);
-									}
-								}}
-							/>
-						) : null}
-						{!seg.continuesAfter && resizable ? (
-							<div
-								className={`${WeekViewClasses.elements.handle} ${WeekViewClasses.modifiers.handleBottom}`}
-								onPointerDown={(e) => {
-									const col = colRef.current;
-									if (col && e.currentTarget.parentElement) {
-										beginResize(e, block, seg, 'bottom', col, e.currentTarget.parentElement);
-									}
-								}}
-							/>
-						) : null}
+						{/* 时间文字保留（无时间轴后仍需知道块的时刻） */}
+						<span className={WeekViewClasses.elements.timeBlockTime}>
+							{`${formatMinutes(seg.startMin)} – ${formatMinutes(seg.endMin)}`}
+						</span>
+						<TaskCard
+							task={block.task}
+							config={blockConfig}
+							targetDate={day.date}
+							onClick={hideTooltip}
+							onRefresh={onCardRefresh}
+							// 触屏长按菜单由画布手势自管（长按未移动 → 合成 contextmenu），
+							// 禁用 TaskCard 内置长按，避免拖拽模式与菜单同时触发
+							disableLongPressMenu
+						/>
 					</div>
 				);
 			})}
-			{/* 拖放吸附指示线（仅外部来源拖入显示；块拖动用落点预览块） */}
-			{dropLine?.dayIndex === dayIndex ? (
-				<div
-					className={WeekViewClasses.elements.dropLine}
-					style={{ top: `${minutesToPx(dropLine.min)}px` }}
-				/>
+			{/* 拖放落点预览：列表式布局下改为“插入位置高亮条” */}
+			{dragOverCol === dayIndex ? (
+				<div className={WeekViewClasses.elements.dropPreview} style={{ display: 'none' }} />
 			) : null}
-			{/* 整块拖动的落点预览：上边缘吸附位置 + 任务时长 */}
-			{dropPreview?.dayIndex === dayIndex ? (
-				<div
-					className={WeekViewClasses.elements.dropPreview}
-					style={{ top: `${minutesToPx(dropPreview.startMin)}px`, height: `${minutesToPx(dropPreview.endMin - dropPreview.startMin)}px` }}
-				>
-					<span className={WeekViewClasses.elements.ghostLabel}>
-						{`${formatMinutes(dropPreview.startMin)} – ${formatMinutes(dropPreview.endMin)}`}
-					</span>
-				</div>
-			) : null}
-			{/* 空白快速创建 ghost */}
-			<div ref={ghostRef} className={WeekViewClasses.elements.ghost} style={{ display: 'none' }}>
-				<span ref={ghostLabelRef} className={WeekViewClasses.elements.ghostLabel} />
-				<span className={WeekViewClasses.elements.ghostPlus}><Icon icon="plus" /></span>
-			</div>
 		</div>
 	);
 }

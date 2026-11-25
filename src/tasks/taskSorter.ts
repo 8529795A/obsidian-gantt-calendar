@@ -10,27 +10,12 @@ import type { GCTask, SortField, SortState } from '../types';
  * 每个选项包含字段标识、显示图标和标签
  */
 export const SORT_OPTIONS: Array<{ field: SortField; icon: string; label: string }> = [
-	{ field: 'priority', icon: '🔺', label: '优先级' },
 	{ field: 'description', icon: '🔤', label: '字母排序' },
 	{ field: 'createdDate', icon: '➕', label: '创建时间' },
 	{ field: 'startDate', icon: '🛫', label: '开始时间' },
 	{ field: 'scheduledDate', icon: '⏳', label: '规划时间' },
 	{ field: 'dueDate', icon: '📅', label: '截止时间' },
-	{ field: 'completionDate', icon: '✅', label: '完成时间' },
 ];
-
-/**
- * 优先级权重映射
- * 数值越大优先级越高（用于降序排序时高优先级在前）
- */
-const PRIORITY_WEIGHTS: Record<string, number> = {
-	'highest': 5,
-	'high': 4,
-	'medium': 3,
-	'normal': 2,
-	'low': 1,
-	'lowest': 0
-};
 
 /**
  * 比较可选日期
@@ -55,17 +40,6 @@ function compareDates(a: Date | undefined, b: Date | undefined, taskA: GCTask, t
  * 【修复】所有比较函数都添加了二级排序（按描述文本），确保主排序值相同时顺序一致
  */
 const comparators: Record<SortField, (a: GCTask, b: GCTask) => number> = {
-	priority: (a, b) => {
-		// 所有任务都应该有优先级，默认为 'normal'
-		const aPriority = PRIORITY_WEIGHTS[a.priority || 'normal'] ?? 2;
-		const bPriority = PRIORITY_WEIGHTS[b.priority || 'normal'] ?? 2;
-		if (aPriority !== bPriority) {
-			return aPriority - bPriority; // 升序：低优先级在前
-		}
-		// 【修复】优先级相同时，按描述文本字母排序
-		return a.description.localeCompare(b.description, 'zh-CN', { numeric: true });
-	},
-
 	description: (a, b) => {
 		return a.description.localeCompare(b.description, 'zh-CN', { numeric: true });
 	},
@@ -74,7 +48,6 @@ const comparators: Record<SortField, (a: GCTask, b: GCTask) => number> = {
 	startDate: (a, b) => compareDates(a.startDate, b.startDate, a, b),
 	scheduledDate: (a, b) => compareDates(a.scheduledDate, b.scheduledDate, a, b),
 	dueDate: (a, b) => compareDates(a.dueDate, b.dueDate, a, b),
-	completionDate: (a, b) => compareDates(a.completionDate, b.completionDate, a, b),
 };
 
 /**

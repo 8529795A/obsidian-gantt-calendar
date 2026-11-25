@@ -11,7 +11,6 @@ import { GanttViewSettingsBuilder } from './builders/GanttViewSettingsBuilder';
 import { TaskSettingsBuilder } from './builders/TaskSettingsBuilder';
 import { TaskStatusSettingsBuilder } from './builders/TaskStatusSettingsBuilder';
 import { FestivalColorBuilder } from './builders/FestivalColorBuilder';
-import { SyncSettingsBuilder } from './builders/SyncSettingsBuilder';
 import type { BuilderConfig } from './types';
 import { i18n } from '../i18n/i18n';
 
@@ -77,7 +76,6 @@ export class GanttCalendarSettingTab extends PluginSettingTab {
 			page('settings.tabs.calendar', 'settings.tabs.calendarDesc', (el, refresh) => this.renderCalendarTab(el, refresh)),
 			page('settings.tabs.views', 'settings.tabs.viewsDesc', (el, refresh) => this.renderViewsTab(el, refresh)),
 			page('settings.tabs.tasks', 'settings.tabs.tasksDesc', (el, refresh) => this.renderTasksTab(el, refresh)),
-			page('settings.tabs.sync', 'settings.tabs.syncDesc', (el, refresh) => this.renderSyncTab(el, refresh)),
 		];
 	}
 
@@ -110,10 +108,5 @@ export class GanttCalendarSettingTab extends PluginSettingTab {
 	private renderTasksTab(el: HTMLElement, refresh: () => void): void {
 		new TaskSettingsBuilder(this.cfg(el, refresh)).render();
 		new TaskStatusSettingsBuilder(this.cfg(el, refresh)).render();
-	}
-
-	// 子页 4: 同步
-	private renderSyncTab(el: HTMLElement, refresh: () => void): void {
-		new SyncSettingsBuilder(this.cfg(el, refresh)).render();
 	}
 }

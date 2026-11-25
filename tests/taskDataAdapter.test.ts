@@ -1,4 +1,4 @@
-﻿import { TaskDataAdapter } from '../src/gantt/adapters/taskDataAdapter';
+import { TaskDataAdapter } from '../src/gantt/adapters/taskDataAdapter';
 import type { GCTask } from '../src/types';
 import type { DateFieldType } from '../src/gantt/types';
 
@@ -9,8 +9,6 @@ function makeTask(overrides: Partial<GCTask>): GCTask {
 		lineNumber: 10,
 		content: '- [ ] task',
 		description: 'task',
-		completed: false,
-		priority: 'normal',
 		startDate: new Date(2026, 0, 10),
 		dueDate: new Date(2026, 0, 15),
 		...overrides,

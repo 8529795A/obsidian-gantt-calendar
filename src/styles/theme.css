@@ -6,11 +6,6 @@
 /* 7.1 Task Status States (高特指性) */
 /* 修饰符驱动，不依赖视图容器：任务视图/日视图/周视图/月视图/侧边栏行为一致 */
 
-.gc-task-card--completed {
-	opacity: 0.65;
-	border-left-color: var(--gc-task-completed);
-}
-
 .gc-task-card--pending {
 	border-left-color: var(--gc-task-pending);
 }
@@ -88,13 +83,6 @@
 	color: var(--task-text-color, var(--text-normal));
 }
 
-/* 状态颜色应用到边框 - 仅已完成卡片：色条跟随用户配置的状态色，
-   双类+修饰符的特异性压过 .gc-task-card--completed 的固定绿色条。
-   未完成卡片保持 pending 橙色条（todo 默认浅色背景会让状态色条不可见） */
-.gc-task-card.task-with-status.gc-task-card--completed {
-	border-left-color: var(--task-bg-color, var(--gc-task-completed));
-	opacity: 0.7;
-}
 
 /* 7.4 Festival Themes */
 /* 年视图节日样式 */
@@ -173,29 +161,24 @@
 
 /* 月视图今天样式已收编至 views/month-view.css */
 
+/* 周视图「今天」：只保留表头日期数字变红作标识。
+   整列 / 全天格不再染色——整排红底会与浅蓝底板和白色任务块冲突，
+   且与「今天」这一信息量不成比例（用户 2026-11-22 要求移除） */
 .gc-week-view__header-cell--today {
-	background-color: rgba(255, 107, 107, 0.1);
+	background-color: transparent;
 }
 
 .gc-week-view__header-cell--today .gc-week-view__day-number {
 	color: var(--gc-danger, #ff6b6b);
 }
 
+/* 整列与全天格恢复为与其它列一致的底色（不染色） */
 .gc-week-view__day-col--today {
-	background-color: rgba(255, 107, 107, 0.08);
+	background-color: transparent;
 }
 
 .gc-week-view__allday-cell--today {
-	background-color: rgba(255, 107, 107, 0.08);
+	background-color: transparent;
 }
 
-/* 7.6 Text Decoration (已完成任务) */
-/* 已完成任务一律显示删除线；文字颜色：有状态配置用状态色，否则置灰 */
-.gc-task-card--completed .gc-task-card__text {
-	text-decoration: line-through;
-}
-
-.gc-task-card--completed:not(.task-with-status) .gc-task-card__text {
-	color: var(--text-muted);
-}
 

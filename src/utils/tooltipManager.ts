@@ -3,9 +3,11 @@ import { TooltipClasses, setCssProps } from './bem';
 import { TagPill } from '../components/tagPill';
 import {
 	buildTooltipSections,
+	buildTooltipDetails,
 	type TooltipPropRow,
 } from '../components/tooltip/tooltipSections';
 import { computeTooltipPosition } from '../components/tooltip/tooltipPosition';
+import { i18n } from '../i18n/i18n';
 import {
 	registerTooltipHolder,
 	claimExclusiveTooltip,
@@ -41,6 +43,7 @@ export class TooltipManager {
 
 	private cachedElements: {
 		description?: HTMLElement;
+		details?: HTMLElement;
 		properties?: HTMLElement;
 	} = {};
 
@@ -69,6 +72,9 @@ export class TooltipManager {
 			setCssProps(this.tooltip, { opacity: '0' });
 
 			this.cachedElements.description = this.tooltip.createDiv(TooltipClasses.elements.description);
+			// 详情块紧跟标题（顺序与 React TooltipProvider 一致）
+			this.cachedElements.details = this.tooltip.createDiv(TooltipClasses.elements.details);
+			this.cachedElements.details.addClass('gc-u-hidden');
 			this.cachedElements.properties = this.tooltip.createDiv(TooltipClasses.elements.properties);
 
 			this.cachedElements.properties.addClass('gc-u-hidden');
@@ -141,6 +147,25 @@ export class TooltipManager {
 		this.cachedElements.description.empty();
 		const strongEl = this.cachedElements.description.createEl('strong');
 		strongEl.setText(task.description || '');
+
+		// === 详情（标题下方，与 React 端同源构建）===
+		if (this.cachedElements.details) {
+			this.cachedElements.details.empty();
+			const summary = buildTooltipDetails(task);
+			if (summary) {
+				for (const line of summary.lines) {
+					this.cachedElements.details.createDiv(TooltipClasses.elements.detailsLine).setText(line);
+				}
+				if (summary.hiddenCount > 0) {
+					this.cachedElements.details
+						.createDiv(TooltipClasses.elements.detailsMore)
+						.setText(i18n.t('taskCard.detailsMore', { count: summary.hiddenCount }));
+				}
+				this.cachedElements.details.removeClass('gc-u-hidden');
+			} else {
+				this.cachedElements.details.addClass('gc-u-hidden');
+			}
+		}
 
 		const sections = buildTooltipSections(task);
 

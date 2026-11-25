@@ -60,18 +60,13 @@ interface MarkdownFileCache {
 function fingerprintTask(task: GCTask): string {
 	return [
 		task.content,
-		task.completed ? '1' : '0',
-		task.cancelled ? '1' : '0',
 		task.status || '',
-		task.priority || '',
 		task.format || '',
 		task.repeat || '',
 		task.createdDate?.getTime() ?? '',
 		task.startDate?.getTime() ?? '',
 		task.scheduledDate?.getTime() ?? '',
 		task.dueDate?.getTime() ?? '',
-		task.cancelledDate?.getTime() ?? '',
-		task.completionDate?.getTime() ?? '',
 		task.datePrecision ? JSON.stringify(task.datePrecision) : '',
 		task.metadataFields ? JSON.stringify(task.metadataFields) : '',
 	].join('|');
@@ -723,9 +718,7 @@ export class MarkdownDataSource implements IDataSource {
 					fileName: filePath.split('/').pop() || '',
 					content: '',
 					description: '',
-					completed: false,
-					priority: 'normal'
-				});
+									});
 			}
 		}
 
@@ -862,16 +855,8 @@ export class MarkdownDataSource implements IDataSource {
 			changes.description = newTask.description;
 		}
 
-		if (oldTask.completed !== newTask.completed) {
-			changes.completed = newTask.completed;
-		}
-
 		if (oldTask.status !== newTask.status) {
 			changes.status = newTask.status;
-		}
-
-		if (oldTask.priority !== newTask.priority) {
-			changes.priority = newTask.priority;
 		}
 
 		if (oldTask.dueDate !== newTask.dueDate) {

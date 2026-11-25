@@ -108,10 +108,6 @@ export function generateNoteContent(data: NoteTemplateData): string {
 	lines.push('## 任务信息');
 	lines.push('');
 
-	if (task.priority) {
-		lines.push(`- **优先级**: ${task.priority}`);
-	}
-
 	if (task.tags && task.tags.length > 0) {
 		lines.push(`- **标签**: ${task.tags.map(t => `#${t}`).join(' ')}`);
 	}
@@ -132,13 +128,7 @@ export function generateNoteContent(data: NoteTemplateData): string {
 		lines.push(`- **截止日期**: ${formatDate(task.dueDate, 'yyyy-MM-dd')}`);
 	}
 
-	if (task.completionDate) {
-		lines.push(`- **完成日期**: ${formatDate(task.completionDate, 'yyyy-MM-dd')}`);
-	}
 
-	if (task.cancelledDate) {
-		lines.push(`- **取消日期**: ${formatDate(task.cancelledDate, 'yyyy-MM-dd')}`);
-	}
 
 	// 如果有原任务描述（别名笔记的情况）
 	if (data.originalDescription) {

@@ -57,19 +57,25 @@
 	overflow: hidden;
 }
 
+/* 日视图：外层容器留白收紧，时间刻度尽量上移（标题已移除，无需为标题留白） */
+.calendar-content:has(.gc-view--day) {
+	padding: 4px 12px 12px;
+}
+
 .gc-day-view__allday {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
-	padding: 4px 0;
+	gap: 2px;
+	padding: 2px 0;
 	border-bottom: 1px solid var(--background-modifier-border);
-	background-color: var(--background-primary-alt);
+	/* 透出父级极浅蓝底板，不再用 --background-primary-alt 遮住 */
+	background-color: transparent;
 }
 
 .gc-day-view__allday-label {
 	font-size: 11px;
 	color: var(--text-muted);
-	padding: 2px 4px;
+	padding: 0 4px;
 	flex-shrink: 0;
 }
 
@@ -201,4 +207,49 @@
 	outline: 2px dashed var(--interactive-accent);
 	outline-offset: -2px;
 	border-radius: 4px;
+}
+
+/* ==================== 左右双时间窗（左 00-12 / 右 12-24） ==================== */
+/* 两个画布并排，各自独立滚动；中间细分割线。窄屏（手机）自动改上下堆叠 */
+.gc-day-view__split-canvas {
+	display: flex;
+	flex-direction: row;
+	flex: 1;
+	min-height: 0;
+	min-width: 0;
+	gap: 0;
+}
+
+.gc-day-view__canvas-pane {
+	flex: 1 1 50%;
+	min-width: 0;
+	min-height: 0;
+	overflow-y: auto;
+	overflow-x: hidden;
+}
+
+/* 分割线：视觉细线，不可拖拽（两栏等宽固定） */
+.gc-day-view__canvas-divider {
+	flex: 0 0 1px;
+	align-self: stretch;
+	background-color: var(--background-modifier-border);
+}
+
+/* 窄屏：上下堆叠，各自占一半高度 */
+@media (max-width: 720px) {
+	.gc-day-view__split-canvas {
+		flex-direction: column;
+	}
+
+	.gc-day-view__canvas-pane {
+		flex: 1 1 50%;
+		overflow-y: auto;
+	}
+
+	.gc-day-view__canvas-divider {
+		flex: 0 0 1px;
+		width: 100%;
+		height: 1px;
+		align-self: auto;
+	}
 }

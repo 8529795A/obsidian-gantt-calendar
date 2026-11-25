@@ -121,8 +121,6 @@ describe('TaskRepository', () => {
 				lineNumber: 1,
 				content: '- [ ] Test task',
 				description: 'Test task',
-				completed: false,
-				priority: 'normal',
 				status: 'todo'
 			};
 

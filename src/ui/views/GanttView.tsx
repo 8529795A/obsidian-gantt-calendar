@@ -17,7 +17,7 @@ import { i18n } from '../../i18n/i18n';
 import { usePlugin, useApp } from '../pluginContext';
 import { useCalendarStore, selectViewFilter } from '../store/calendarStore';
 
-const GANTT_CONFIG: Omit<GanttChartConfig, 'on_click' | 'on_date_change' | 'on_progress_change'> = {
+const GANTT_CONFIG: Omit<GanttChartConfig, 'on_click' | 'on_date_change'> = {
 	view_mode: 'week',
 	granularity: TimeGranularity.DAY,
 	language: isChineseLanguage() ? 'zh' : 'en',
@@ -118,23 +118,11 @@ export function GanttView(): JSX.Element {
 		}
 	}, [refreshTasks]);
 
-	const handleProgressChange = useCallback(async (ganttTask: GanttChartTask, progress: number) => {
-		const updateHandler = updateHandlerRef.current;
-		if (!updateHandler) return;
-		try {
-			await updateHandler.handleProgressChange(ganttTask, progress, tasksRef.current);
-			refreshTasks();
-		} catch (error) {
-			Logger.error('GanttView', 'Error handling progress change:', error);
-		}
-	}, [refreshTasks]);
-
 	const config = useMemo<GanttChartConfig>(() => ({
 		...GANTT_CONFIG,
 		on_click: handleTaskClick,
 		on_date_change: (task, start, end) => { void handleDateChange(task, start, end); },
-		on_progress_change: (task, progress) => { void handleProgressChange(task, progress); },
-	}), [handleTaskClick, handleDateChange, handleProgressChange]);
+	}), [handleTaskClick, handleDateChange]);
 
 	const destroyEngine = useCallback(() => {
 		engineRef.current?.destroy();
@@ -247,7 +235,7 @@ export function GanttView(): JSX.Element {
 }
 
 function tasksSignature(tasks: GanttChartTask[]): string {
-	return tasks.map((t) => `${t.id}|${t.start}|${t.end}|${t.leadStart || ''}|${t.progress}|${t.completed}|${t.name}|${t.custom_class || ''}`).join('\u0001');
+	return tasks.map((t) => `${t.id}|${t.start}|${t.end}|${t.leadStart || ''}|${t.name}|${t.custom_class || ''}`).join('\u0001');
 }
 
 /**

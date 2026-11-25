@@ -43,7 +43,6 @@ export function matchDate(task: GCTask, sinceDate: string): boolean {
         task.startDate,
         task.createdDate,
         task.scheduledDate,
-        task.completionDate,
     ];
 
     return dates.some(d => d && d.getTime() >= threshold);
@@ -52,10 +51,6 @@ export function matchDate(task: GCTask, sinceDate: string): boolean {
 /** 单任务过滤判定 */
 export function passesPushFilter(task: GCTask, config: PushFilterConfig): boolean {
     if (!config.enabled) return true;
-
-    if (config.completionStatus === 'incomplete-only' && task.completed) {
-        return false;
-    }
     if (config.paths.length > 0 && !matchPath(task.filePath, config.paths)) {
         return false;
     }

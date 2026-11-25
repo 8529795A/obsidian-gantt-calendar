@@ -60,34 +60,98 @@
 	.gc-edit-task-modal__desc-textarea:focus {
 		border-color: var(--interactive-accent);
 	}
-	.gc-edit-task-modal__priority-grid {
+	/* ===== 任务详情（任务行下方的多行内容）===== */
+	.gc-edit-task-modal__details-container {
+		display: flex;
+		flex-direction: column;
+	}
+	.gc-edit-task-modal__details-hint {
+		font-size: var(--font-ui-smaller);
+		color: var(--text-faint);
+		margin: -2px 0 6px;
+		line-height: 1.5;
+	}
+	.gc-edit-task-modal__details-textarea {
+		width: 100%;
+		min-height: 84px;
+		max-height: 220px;
+		padding: 8px;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: 4px;
+		background: var(--background-secondary);
+		color: var(--text-normal);
+		resize: vertical;
+		overflow: auto;
+		font-family: var(--font-text);
+		font-size: var(--font-ui-small);
+		line-height: 1.55;
+		tab-size: 2;
+	}
+	.gc-edit-task-modal__details-textarea:focus {
+		border-color: var(--interactive-accent);
+	}
+	.gc-edit-task-modal__details-textarea::placeholder {
+		color: var(--text-faint);
+	}
+	/* ===== 任务状态选择 ===== */
+	.gc-edit-task-modal__status-grid {
 		display: grid;
-		grid-template-columns: repeat(6, 1fr);
+		grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
 		gap: 6px;
 		margin-top: 8px;
 	}
-	.gc-edit-task-modal__priority-btn {
-		padding: 4px 2px;
+	.gc-edit-task-modal__status-btn {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 8px;
 		border: 1px solid var(--background-modifier-border);
 		border-radius: 4px;
 		background: var(--background-secondary);
 		color: var(--text-normal);
 		cursor: pointer;
-		font-size: 11px;
+		font-size: 12px;
 		transition: all 0.15s ease;
 		white-space: nowrap;
-		text-align: center;
+		text-align: left;
+		overflow: hidden;
 	}
-	.gc-edit-task-modal__priority-btn:hover {
+	.gc-edit-task-modal__status-btn:hover {
 		background: var(--background-modifier-hover);
 	}
-	/* 双类选择器（0-2-0）压过 .priority-btn:hover（同为 0-2-0 且本规则在后），
-	   替代原先的 4 个 !important */
-	.gc-edit-task-modal__priority-btn.gc-edit-task-modal__priority-btn-selected {
-		background: var(--background-modifier-hover);
-		color: var(--text-normal);
-		border-color: transparent;
-		border-left: 3px solid var(--interactive-accent);
+	/* 选中态：实心强调色填充 + 主色描边 + 右侧对勾，明显区别于未选中（双击可取消） */
+	.gc-edit-task-modal__status-btn.gc-edit-task-modal__status-btn--selected {
+		background: var(--interactive-accent);
+		color: var(--text-on-accent);
+		border-color: var(--interactive-accent);
+		font-weight: 600;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+	}
+	.gc-edit-task-modal__status-btn.gc-edit-task-modal__status-btn--selected:hover {
+		filter: brightness(1.06);
+		background: var(--interactive-accent);
+	}
+	.gc-edit-task-modal__status-btn.gc-edit-task-modal__status-btn--selected .gc-edit-task-modal__status-swatch {
+		border-color: rgba(255, 255, 255, 0.85);
+	}
+	.gc-edit-task-modal__status-btn-check {
+		margin-left: auto;
+		padding-left: 4px;
+		font-size: 12px;
+		line-height: 1;
+		flex: 0 0 auto;
+	}
+	.gc-edit-task-modal__status-swatch {
+		flex: 0 0 auto;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		border: 1px solid var(--background-modifier-border);
+	}
+	.gc-edit-task-modal__status-btn-label {
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.gc-edit-task-modal__dates-grid {
 		display: grid;
@@ -221,10 +285,3 @@
 	.gc-edit-task-modal__buttons button.mod-cta:hover {
 		background: var(--interactive-accent-hover);
 	}
-
-/* 手机端：优先级 6 列收窄为 3 列，避免文字截断溢出 */
-@media (max-width: 520px) {
-	.gc-edit-task-modal__priority-grid {
-		grid-template-columns: repeat(3, 1fr);
-	}
-}

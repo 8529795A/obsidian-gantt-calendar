@@ -21,14 +21,47 @@ export interface TooltipSection {
 	rows: TooltipPropRow[];
 }
 
-/** 优先级 emoji 映射（两端共用） */
-const PRIORITY_ICONS: Record<string, string> = {
-	highest: '🔺',
-	high: '⏫',
-	medium: '🔼',
-	low: '🔽',
-	lowest: '⏬',
-};
+/** 悬浮窗详情最多显示的行数（超出折叠为「…还有 N 行」） */
+export const TOOLTIP_DETAIL_MAX_LINES = 4;
+
+export interface TooltipDetailsSummary {
+	/** 待显示的行（已去掉 == 高亮符号，最多 MAX_LINES 行） */
+	lines: string[];
+	/** 被折叠的行数（0 表示全部显示） */
+	hiddenCount: number;
+}
+
+/**
+ * 把任务详情压成悬浮窗用的摘要。
+ *
+ * - 去掉 Obsidian 高亮语法 `==文字==` 的等号（用户要求不加背景色，只留纯文字）
+ * - **保留行首缩进**（Tab/空格），让悬浮窗里的层级与笔记一致
+ * - 最多保留 {@link TOOLTIP_DETAIL_MAX_LINES} 行，其余计数折叠
+ *
+ * @returns 无详情时返回 null
+ */
+export function buildTooltipDetails(task: GCTask): TooltipDetailsSummary | null {
+	const raw = task.details;
+	if (!raw || !raw.trim()) return null;
+
+	const all = raw
+		.replace(/\r\n?/g, '\n')
+		.split('\n')
+		.map((line) => line
+			// 去掉高亮符号：==文字== → 文字
+			.replace(/==([^=]*)==/g, '$1')
+			// 去掉残留的孤立 ==
+			.replace(/==/g, '')
+			// 只去行尾空白，保留行首缩进层级
+			.trimEnd())
+		.filter((line) => line.trim() !== '');
+
+	if (all.length === 0) return null;
+
+	const lines = all.slice(0, TOOLTIP_DETAIL_MAX_LINES);
+	const hiddenCount = Math.max(0, all.length - lines.length);
+	return { lines, hiddenCount };
+}
 
 export function buildTooltipSections(task: GCTask): TooltipSection[] {
 	const sections: TooltipSection[] = [];
@@ -45,24 +78,11 @@ export function buildTooltipSections(task: GCTask): TooltipSection[] {
 		timeRows.push({
 			label: i18n.t('taskCard.due'),
 			value: formatDate(task.dueDate, task.datePrecision?.dueDate === 'time' ? 'yyyy-MM-dd HH:mm' : 'yyyy-MM-dd'),
-			isOverdue: task.dueDate < new Date() && !task.completed,
+			isOverdue: task.dueDate < new Date(),
 		});
 	}
-	pushTime(task.cancelledDate, i18n.t('taskCard.cancelled'), task.datePrecision?.cancelledDate);
-	pushTime(task.completionDate, i18n.t('taskCard.done'), task.datePrecision?.completionDate);
 	if (task.repeat) timeRows.push({ label: i18n.t('taskCard.repeat'), value: task.repeat });
 	if (timeRows.length > 0) sections.push({ key: 'time', rows: timeRows });
-
-	if (task.priority && task.priority !== 'normal') {
-		sections.push({
-			key: 'priority',
-			rows: [{
-				label: i18n.t('taskCard.priority'),
-				value: `${PRIORITY_ICONS[task.priority] || ''} ${i18n.t(`common.priority.${task.priority}`)}`,
-				valueClass: `priority-${task.priority}`,
-			}],
-		});
-	}
 
 	if (task.tags && task.tags.length > 0) sections.push({ key: 'tags', rows: [] });
 

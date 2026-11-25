@@ -6,6 +6,8 @@ import type { CreateTaskData } from '../../utils/dailyNoteHelper';
 import { createTaskInDailyNote } from '../../utils/dailyNoteHelper';
 import type { TaskUpdates } from '../../tasks/taskSerializer';
 import { updateTaskProperties } from '../../tasks/taskUpdater';
+import type { TaskStatus, TaskStatusType } from '../../tasks/taskStatus';
+import { DEFAULT_TASK_STATUSES, getStatusColor } from '../../tasks/taskStatus';
 import { Logger } from '../../utils/logger';
 import { i18n } from '../../i18n/i18n';
 import { EditTaskModalClasses } from '../../utils/bem';
@@ -14,15 +16,6 @@ import { TagSelector } from './TagSelector';
 import { RepeatSection } from './RepeatSection';
 import { DateTimePicker } from '../components/DateTimePicker';
 import { openReactModal } from './modalHost';
-
-/**
- * 优先级选项
- */
-export interface PriorityOption {
-	value: 'highest' | 'high' | 'medium' | 'normal' | 'low' | 'lowest';
-	label: string;
-	icon: string;
-}
 
 export interface TaskFormModalProps {
 	/** 创建或编辑模式 */
@@ -47,25 +40,12 @@ export interface TaskFormModalProps {
 
 // 模块级常量会在 import 时固化 i18n 文案，语言切换后不生效——
 // 改为组件内按当前语言求值
-function getPriorityOptions(): PriorityOption[] {
-	return [
-		{ value: 'highest', label: i18n.t('common.priority.highest'), icon: '🔺' },
-		{ value: 'high', label: i18n.t('common.priority.high'), icon: '⏫' },
-		{ value: 'medium', label: i18n.t('common.priority.medium'), icon: '🔼' },
-		{ value: 'normal', label: i18n.t('common.priority.normal'), icon: '◽' },
-		{ value: 'low', label: i18n.t('common.priority.low'), icon: '🔽' },
-		{ value: 'lowest', label: i18n.t('common.priority.lowest'), icon: '⏬' },
-	];
-}
-
 function getDateFields(): DateFieldDef[] {
 	return [
 		{ key: 'createdDate', label: i18n.t('modals.createTask.dateFields.created') },
 		{ key: 'startDate', label: i18n.t('modals.createTask.dateFields.start') },
 		{ key: 'scheduledDate', label: i18n.t('modals.createTask.dateFields.scheduled') },
 		{ key: 'dueDate', label: i18n.t('modals.createTask.dateFields.due') },
-		{ key: 'completionDate', label: i18n.t('modals.createTask.dateFields.completion') },
-		{ key: 'cancelledDate', label: i18n.t('modals.createTask.dateFields.cancelled') },
 	];
 }
 
@@ -118,15 +98,9 @@ export function TaskFormModal({
 	onClose,
 }: TaskFormModalProps): JSX.Element {
 	const [open, setOpen] = useState(true);
-	const priorityOptions = useMemo(getPriorityOptions, []);
 	const dateFields = useMemo(getDateFields, []);
 
 	// ========== 表单状态 ==========
-	const [priority, setPriority] = useState<PriorityOption['value']>(
-		mode === 'edit'
-			? ((task?.priority as PriorityOption['value']) || 'normal')
-			: (plugin?.settings.defaultTaskPriority || 'normal')
-	);
 	const [repeat, setRepeat] = useState<string | null>(mode === 'edit' ? (task?.repeat || null) : null);
 
 	// 日期状态：{ key: Date | null }
@@ -137,8 +111,6 @@ export function TaskFormModal({
 			d.startDate = task.startDate || null;
 			d.scheduledDate = task.scheduledDate || null;
 			d.dueDate = task.dueDate || null;
-			d.completionDate = task.completionDate || null;
-			d.cancelledDate = task.cancelledDate || null;
 		} else {
 			const base = targetDate || new Date();
 			const dayStart = new Date(base);
@@ -147,8 +119,6 @@ export function TaskFormModal({
 			d.dueDate = new Date(dayStart);
 			d.startDate = null;
 			d.scheduledDate = null;
-			d.cancelledDate = null;
-			d.completionDate = null;
 			if (targetRange) {
 				// 时间线拖拽选区：直接建成区间任务
 				d.startDate = new Date(targetRange.start);
@@ -169,11 +139,27 @@ export function TaskFormModal({
 	);
 	const [selectedTags, setSelectedTags] = useState<string[]>(mode === 'edit' ? (task?.tags || []) : []);
 	const [description, setDescription] = useState(mode === 'edit' ? (task?.description || '') : '');
+	// 任务详情：任务行下方的多行内容（已做缩进归一化，写回时统一加回缩进）
+	const [details, setDetails] = useState(mode === 'edit' ? (task?.details || '') : '');
+
+	// ========== 任务状态 ==========
+	// 状态来源：插件设置里的 taskStatuses（默认 + 用户自定义），
+	// 目前可按 '-' 取消、'/' 进行中等符号写入复选框，编辑面板此前完全缺失该入口。
+	const statusOptions = useMemo<TaskStatus[]>(
+		() => plugin?.settings?.taskStatuses || DEFAULT_TASK_STATUSES,
+		[plugin]
+	);
+	// 空字符串 = 未选择任何状态（写回时复选框为空格 [ ]，即无状态色）。
+	// 点击已选中的状态可再次取消选择，回到「未选择」。
+	const [status, setStatus] = useState<TaskStatusType>(
+		mode === 'edit' ? (task?.status ?? '') : ''
+	);
+	const [statusChanged, setStatusChanged] = useState(false);
 	const descriptionRef = useRef<HTMLTextAreaElement | null>(null);
 
 	// 编辑模式：变更跟踪
-	const [priorityChanged, setPriorityChanged] = useState(false);
 	const [repeatChanged, setRepeatChanged] = useState(false);
+	const [detailsChanged, setDetailsChanged] = useState(false);
 	const [datesChanged, setDatesChanged] = useState(false);
 	const [contentChanged, setContentChanged] = useState(false);
 	const [tagsChanged, setTagsChanged] = useState(false);
@@ -198,6 +184,9 @@ export function TaskFormModal({
 	const title = isEdit ? i18n.t('modals.editTask.title') : i18n.t('modals.createTask.title');
 	const saveText = isEdit ? i18n.t('common.save') : i18n.t('common.add');
 
+	// 状态是否可选：创建模式总是允许；编辑模式与「任务描述」同口径（allowEditContent 缺省视为允许）
+	const canEditStatus = !isEdit || allowEditContent !== false;
+
 	// ========== 保存逻辑 ==========
 	const saveTask = async () => {
 		if (mode === 'create') {
@@ -219,15 +208,20 @@ export function TaskFormModal({
 			try {
 				const taskData: CreateTaskData = {
 					description: desc,
-					priority: priority === 'normal' ? undefined : priority,
 					repeat: repeat || undefined,
+					// 显式传入「在哪一天创建」：决定任务写进哪一天的 Daily Note。
+					// 以弹窗里可见的创建日期为准（所见即所得），其次才回退到打开弹窗时的目标日期。
+					// 不能用今天兜底——否则在日历里给 18 号建任务会落进 21 号的日记。
+					targetDate: dates.createdDate ?? targetDate ?? null,
 					createdDate: dates.createdDate!,
 					startDate: dates.startDate,
 					scheduledDate: dates.scheduledDate,
 					dueDate: dates.dueDate!,
-					completionDate: dates.completionDate,
-					cancelledDate: dates.cancelledDate,
 					tags: selectedTags.length > 0 ? selectedTags : undefined,
+					// 状态决定复选框符号；空串=未选择，写回 [ ]（无状态色）。
+					// 不传会落成「未开始」，用户还得再右键改一次。
+					status: status || undefined,
+					details: details.trim() ? details : undefined,
 					datePrecision: Object.keys(datePrecision).length > 0 ? datePrecision : undefined,
 				};
 				const targetFilePath = await createTaskInDailyNote(app, taskData, plugin.settings, plugin.dailyNoteIndex);
@@ -257,18 +251,23 @@ export function TaskFormModal({
 		}
 		try {
 			const updates: TaskUpdates = {};
-			if (priorityChanged) updates.priority = priority;
 			if (repeatChanged) updates.repeat = repeat;
+			// 详情：空串表示清除（写回时删除详情块）
+			if (detailsChanged) updates.details = details;
 			if (datesChanged) {
 				updates.createdDate = dates.createdDate;
 				updates.startDate = dates.startDate;
 				updates.scheduledDate = dates.scheduledDate;
 				updates.dueDate = dates.dueDate;
-				updates.completionDate = dates.completionDate;
-				updates.cancelledDate = dates.cancelledDate;
 			}
 			if (contentChanged) updates.content = description;
 			if (tagsChanged) updates.tags = selectedTags;
+			if (statusChanged) {
+				// 状态变更写入复选框符号（[x] / [/] / [-] / [!] / 自定义符号）。
+				// 空串表示「未选择任何状态」，写回 [ ]（无状态色）。
+				// 未变更时不传，避免覆盖用户在别处（右键菜单/正文）刚改的状态。
+				updates.status = status;
+			}
 
 			if (Object.keys(updates).length === 0) {
 				handleClose();
@@ -310,7 +309,7 @@ export function TaskFormModal({
 			<div className={EditTaskModalClasses.block}>
 				{/* 滚动容器 */}
 				<div className={EditTaskModalClasses.elements.scrollContainer}>
-					{/* 1. 任务描述板块（编辑模式仅在允许时显示） */}
+					{/* 1. 任务标题板块（编辑模式仅在允许时显示） */}
 					{!isEdit || allowEditContent ? (
 						<div className={EditTaskModalClasses.elements.section}>
 							<div className={EditTaskModalClasses.elements.descContainer}>
@@ -341,32 +340,110 @@ export function TaskFormModal({
 						</div>
 					) : null}
 
-					{/* 2. 优先级板块 */}
-					<div className={EditTaskModalClasses.elements.section}>
-						<div className={EditTaskModalClasses.elements.priorityContainer}>
-							<label className={EditTaskModalClasses.elements.sectionLabel}>
-								{i18n.t('modals.editTask.priorityLabel')}
-							</label>
-							<div className={EditTaskModalClasses.elements.priorityGrid}>
-								{priorityOptions.map(option => (
-									<button
-										key={option.value}
-										className={[
-											EditTaskModalClasses.elements.priorityBtn,
-											...(option.value === priority ? [EditTaskModalClasses.elements.priorityBtnSelected] : []),
-										].join(' ')}
-										data-value={option.value}
-										onClick={() => {
-											setPriority(option.value);
-											if (isEdit) setPriorityChanged(true);
-										}}
-									>
-										{`${option.icon} ${option.label}`}
-									</button>
-								))}
+					{/* 1.5. 任务详情板块（任务行下方的多行内容） */}
+					{!isEdit || allowEditContent ? (
+						<div className={EditTaskModalClasses.elements.section}>
+							<div className={EditTaskModalClasses.elements.detailsContainer}>
+								<label className={EditTaskModalClasses.elements.sectionLabel}>
+									{i18n.t('modals.editTask.detailsLabel')}
+								</label>
+								<div className={EditTaskModalClasses.elements.detailsHint}>
+									{i18n.t('modals.editTask.detailsHint')}
+								</div>
+								<textarea
+									className={EditTaskModalClasses.elements.detailsTextarea}
+									placeholder={i18n.t('modals.editTask.detailsPlaceholder')}
+									value={details}
+									rows={4}
+									spellCheck={false}
+									onChange={(e) => {
+										setDetails(e.target.value);
+										if (isEdit) setDetailsChanged(true);
+									}}
+									onKeyDown={(e) => {
+										// 详情区按 1:1 保留 Obsidian 格式，必须支持 Tab 缩进：
+										// 默认 Tab 会跳出焦点，这里改为在光标处插入 Tab 字符，
+										// Shift+Tab 则退掉一个前导 Tab。
+										if (e.key !== 'Tab') return;
+										e.preventDefault();
+										const el = e.currentTarget;
+										const start = el.selectionStart;
+										const end = el.selectionEnd;
+										const value = el.value;
+										if (e.shiftKey) {
+											// 退格：删掉光标所在行行首的一个 Tab
+											const lineStart = value.lastIndexOf('\n', start - 1) + 1;
+											if (value[lineStart] === '\t') {
+												const next = value.slice(0, lineStart) + value.slice(lineStart + 1);
+												setDetails(next);
+												if (isEdit) setDetailsChanged(true);
+												requestAnimationFrame(() => {
+													el.selectionStart = el.selectionEnd = Math.max(lineStart, start - 1);
+												});
+											}
+											return;
+										}
+										const next = `${value.slice(0, start)}\t${value.slice(end)}`;
+										setDetails(next);
+										if (isEdit) setDetailsChanged(true);
+										requestAnimationFrame(() => {
+											el.selectionStart = el.selectionEnd = start + 1;
+										});
+									}}
+								/>
 							</div>
 						</div>
-					</div>
+					) : null}
+
+					{/* 2.5. 任务状态板块 */}
+					{canEditStatus ? (
+						<div className={EditTaskModalClasses.elements.section}>
+							<div className={EditTaskModalClasses.elements.statusContainer}>
+								<label className={EditTaskModalClasses.elements.sectionLabel}>
+									{i18n.t('modals.editTask.statusLabel')}
+								</label>
+								<div className={EditTaskModalClasses.elements.statusGrid}>
+									{statusOptions.map(option => {
+										const selected = option.key === status;
+										const colors = getStatusColor(option.key, statusOptions);
+										return (
+											<button
+												key={option.key}
+												className={[
+													EditTaskModalClasses.elements.statusBtn,
+													...(selected ? [EditTaskModalClasses.elements.statusBtnSelected] : []),
+												].join(' ')}
+												data-status={option.key}
+												aria-pressed={selected}
+												title={option.description || option.name}
+												onClick={() => {
+													// 单选：再次点击已选中的状态即取消选择（回到无状态）
+													setStatus(selected ? '' : option.key);
+													if (isEdit) setStatusChanged(true);
+												}}
+											>
+												<span
+													className={EditTaskModalClasses.elements.statusSwatch}
+													style={{ backgroundColor: colors?.bg ?? 'transparent' }}
+												/>
+												<span className={EditTaskModalClasses.elements.statusBtnLabel}>
+													{option.name}
+												</span>
+												{selected ? (
+													<span
+														className={EditTaskModalClasses.elements.statusBtnCheck}
+														aria-hidden="true"
+													>
+														✓
+													</span>
+												) : null}
+											</button>
+										);
+									})}
+								</div>
+							</div>
+						</div>
+					) : null}
 
 					{/* 3. 时间设置板块 */}
 					<div className={EditTaskModalClasses.elements.section}>

@@ -185,6 +185,8 @@
 	flex: 1;
 	overflow: visible;
 	height: auto;
+	/* 天蓝底板（硬编码兜底 + token，双保险）：任务块（白/彩底）在蓝底上更易区分 */
+	background-color: var(--gc-canvas-tint, #EFF6FF);
 }
 
 .gc-week-view__days {
@@ -195,17 +197,21 @@
 
 /* ==================== Day View Layout ==================== */
 /* BEM命名: gc-day-view, gc-view */
+/* 纵向留白收紧：外层 .calendar-content 已有 12px padding，
+   此处只留极小内边距，把空间让给时间刻度（标题已移除） */
 .gc-day-view,
 .gc-view.gc-view--day {
 	display: flex;
 	flex-direction: column;
-	gap: 12px;
+	gap: 0;
 	max-width: 100%;
 	margin: 0;
 	height: auto;
 	flex: 1;
 	overflow-y: visible;
-	padding: 12px;
+	padding: 0;
+	/* 天蓝底板（硬编码兜底 + token，双保险）：与周视图一致 */
+	background-color: var(--gc-canvas-tint, #EFF6FF);
 }
 
 /* 水平分屏布局修饰符 */

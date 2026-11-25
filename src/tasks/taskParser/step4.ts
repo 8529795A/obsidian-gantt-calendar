@@ -11,10 +11,7 @@
 import { RegularExpressions } from '../../utils/RegularExpressions';
 import {
     TaskFormatType,
-    PriorityLevel,
     DateFieldType,
-    parsePriorityFromEmoji,
-    parsePriorityFromDataview,
 } from '../taskSerializerSymbols';
 import { TaskStatusType, parseStatusFromCheckbox } from '../taskStatus';
 import { createDate } from '../../dateUtils/timezone';
@@ -24,15 +21,12 @@ import { TASKS_FORMAT_CONFIG, DATAVIEW_FORMAT_CONFIG } from '../taskSerializerSy
 
 /**
  * 复选框状态解析结果
+ *
+ * 任务状态只用于卡片颜色标签，不含完成/取消语义：
+ * 复选框符号仅映射到 status key，不再产出 completed / cancelled。
  */
 export interface CheckboxStatus {
-    /** 是否已完成 */
-    completed: boolean;
-
-    /** 是否已取消 */
-    cancelled: boolean;
-
-    /** 任务状态类型 */
+    /** 任务状态类型（纯颜色标签）；空字符串表示无状态（普通待办） */
     status: TaskStatusType;
 
     /** 原始状态字符 */
@@ -62,17 +56,11 @@ export type ParsedDatePrecisions = Partial<Record<DateFieldType, DatePrecision>>
  * 包含所有可解析的任务属性
  */
 export interface ParsedTaskAttributes {
-    /** 优先级级别 */
-    priority?: PriorityLevel;
-
     /** 解析出的日期字段 */
     dates: ParsedDates;
 
     /** 日期字段精度映射（'day' 或 'time'） */
     datePrecisions: ParsedDatePrecisions;
-
-    /** 是否存在取消日期（用于设置 cancelled 状态） */
-    hasCancelledDate: boolean;
 
     /** 周期任务规则 */
     repeat?: string;
@@ -83,48 +71,23 @@ export interface ParsedTaskAttributes {
 /**
  * 解析复选框状态
  *
- * 根据复选框内的字符判断任务的完成状态。
- *
- * 支持的状态：
- * - `[ ]` (空格) → TODO → completed=false, cancelled=false
- * - `[x]` (x/X) → DONE → completed=true, cancelled=false
- * - `[!]` (!) → IMPORTANT → completed=false, cancelled=false
- * - `[-]` (-) → CANCELED → completed=false, cancelled=true
- * - `[/]` (/) → IN_PROGRESS → completed=false, cancelled=false
- * - `[?]` (?) → QUESTION → completed=false, cancelled=false
- * - `[n]` (n) → START → completed=false, cancelled=false
+ * 复选框符号只用于映射任务状态 key（纯颜色标签）。
+ * 自 2026-11-23 重构起，不再产出 completed / cancelled 语义。
  *
  * @param status - 复选框状态字符
- * @returns 复选框状态对象
+ * @returns 复选框状态对象（仅含 status 与原始字符）
  *
  * @example
  * ```ts
- * parseCheckboxStatus(' ')  // { completed: false, cancelled: false, status: 'todo', originalStatus: ' ' }
- * parseCheckboxStatus('x')  // { completed: true, cancelled: false, status: 'done', originalStatus: 'x' }
- * parseCheckboxStatus('-')  // { completed: false, cancelled: true, status: 'canceled', originalStatus: '-' }
- * parseCheckboxStatus('/')  // { completed: false, cancelled: false, status: 'in_progress', originalStatus: '/' }
+ * parseCheckboxStatus(' ')  // { status: 'todo', originalStatus: ' ' }
+ * parseCheckboxStatus('!')  // { status: 'important', originalStatus: '!' }
+ * parseCheckboxStatus('z')  // { status: 'todo', originalStatus: 'z' }（未知符号回退待办）
  * ```
  */
 export function parseCheckboxStatus(status: string): CheckboxStatus {
-    const normalized = status.toLowerCase();
-
-    let completed = false;
-    let cancelled = false;
-
-    // 使用 taskStatus 中的状态映射
+    // 使用 taskStatus 中的状态映射（未知符号回退 'todo'）
     const taskStatus = parseStatusFromCheckbox(status);
-
-    // 判断完成状态
-    if (normalized === 'x' || taskStatus === 'done') {
-        completed = true;
-    }
-
-    // 判断取消状态（注意：是 [-] 不是 [/]）
-    if (normalized === '-' || taskStatus === 'canceled') {
-        cancelled = true;
-    }
-
-    return { completed, cancelled, status: taskStatus, originalStatus: status };
+    return { status: taskStatus, originalStatus: status };
 }
 
 /**
@@ -186,31 +149,6 @@ export function isCancelled(status: string): boolean {
 // ==================== Tasks 格式解析 ====================
 
 /**
- * 解析 Tasks 格式的优先级
- *
- * 从任务内容中提取优先级 emoji 并转换为优先级级别。
- *
- * @param content - 任务内容
- * @returns 优先级级别，未找到则返回 undefined
- *
- * @example
- * ```ts
- * parseTasksPriority("任务 ⏫ 内容")    // 返回: 'high'
- * parseTasksPriority("🔺 重要任务")     // 返回: 'highest'
- * parseTasksPriority("普通任务")        // 返回: undefined
- * ```
- */
-export function parseTasksPriority(content: string): PriorityLevel | undefined {
-    const regex = RegularExpressions.Tasks.priorityRegex;
-    regex.lastIndex = 0; // 重置正则索引
-
-    const match = regex.exec(content);
-    if (!match) return undefined;
-
-    return parsePriorityFromEmoji(match[1]);
-}
-
-/**
  * 解析 Tasks 格式的日期字段
  *
  * 从任务内容中提取所有日期字段（创建、开始、计划、截止、取消、完成）。
@@ -254,10 +192,9 @@ export function parseTasksDates(content: string): { dates: ParsedDates; precisio
  *
  * @example
  * ```ts
- * parseTasksAttributes("任务 ⏫ ➕ 2024-01-10 📅 2024-01-15")
+ * parseTasksAttributes("任务 ➕ 2024-01-10 📅 2024-01-15")
  * // 返回: {
- * //   priority: 'high',
- * //   dates: {
+ * * //   dates: {
  * //     createdDate: Date('2024-01-10'),
  * //     dueDate: Date('2024-01-15')
  * //   },
@@ -266,50 +203,17 @@ export function parseTasksDates(content: string): { dates: ParsedDates; precisio
  * ```
  */
 export function parseTasksAttributes(content: string): ParsedTaskAttributes {
-    const priority = parseTasksPriority(content) || 'normal'; // 未指定优先级时默认为 normal
     const { dates, precisions } = parseTasksDates(content);
     const repeat = parseTasksRepeat(content);
 
     return {
-        priority,
         dates,
         datePrecisions: precisions,
-        hasCancelledDate: !!dates.cancelledDate,
         repeat,
     };
 }
 
 // ==================== Dataview 格式解析 ====================
-
-/**
- * 解析 Dataview 格式的优先级
- *
- * 从任务内容中提取优先级字段并转换为优先级级别。
- *
- * @param content - 任务内容
- * @returns 优先级级别，未找到则返回 undefined
- *
- * @example
- * ```ts
- * parseDataviewPriority("任务 [priority:: high]")
- * // 返回: 'high'
- *
- * parseDataviewPriority("任务 [priority:: HIGHEST]")
- * // 返回: 'highest'
- *
- * parseDataviewPriority("普通任务")
- * // 返回: undefined
- * ```
- */
-export function parseDataviewPriority(content: string): PriorityLevel | undefined {
-    const regex = RegularExpressions.Dataview.priorityRegex;
-    regex.lastIndex = 0;
-
-    const match = regex.exec(content);
-    if (!match) return undefined;
-
-    return parsePriorityFromDataview(match[1]);
-}
 
 /**
  * 解析 Dataview 格式的日期字段
@@ -359,10 +263,9 @@ export function parseDataviewDates(content: string): { dates: ParsedDates; preci
  *
  * @example
  * ```ts
- * parseDataviewAttributes("任务 [priority:: high] [created:: 2024-01-10] [due:: 2024-01-15]")
+ * parseDataviewAttributes("任务 [created:: 2024-01-10] [due:: 2024-01-15]")
  * // 返回: {
- * //   priority: 'high',
- * //   dates: {
+ * * //   dates: {
  * //     createdDate: Date('2024-01-10'),
  * //     dueDate: Date('2024-01-15')
  * //   },
@@ -371,15 +274,12 @@ export function parseDataviewDates(content: string): { dates: ParsedDates; preci
  * ```
  */
 export function parseDataviewAttributes(content: string): ParsedTaskAttributes {
-    const priority = parseDataviewPriority(content) || 'normal'; // 未指定优先级时默认为 normal
     const { dates, precisions } = parseDataviewDates(content);
     const repeat = parseDataviewRepeat(content);
 
     return {
-        priority,
         dates,
         datePrecisions: precisions,
-        hasCancelledDate: !!dates.cancelledDate,
         repeat,
     };
 }
@@ -398,12 +298,12 @@ export function parseDataviewAttributes(content: string): ParsedTaskAttributes {
  * @example
  * ```ts
  * // Tasks 格式
- * parseTaskAttributes("任务 ⏫ 📅 2024-01-15", 'tasks')
- * // 返回: { priority: 'high', dates: { dueDate: Date }, hasCancelledDate: false }
+ * parseTaskAttributes("任务 📅 2024-01-15", 'tasks')
+ * // 返回: { dates: { dueDate: Date } }
  *
  * // Dataview 格式
- * parseTaskAttributes("任务 [priority:: high] [due:: 2024-01-15]", 'dataview')
- * // 返回: { priority: 'high', dates: { dueDate: Date }, hasCancelledDate: false }
+ * parseTaskAttributes("任务 [due:: 2024-01-15]", 'dataview')
+ * // 返回: { dates: { dueDate: Date } }
  * ```
  */
 export function parseTaskAttributes(
@@ -416,12 +316,10 @@ export function parseTaskAttributes(
         return parseDataviewAttributes(content);
     }
 
-    // 未知格式返回空结果（优先级默认为 normal）
+    // 未知格式返回空结果
     return {
-        priority: 'normal',
         dates: {},
         datePrecisions: {},
-        hasCancelledDate: false,
     };
 }
 

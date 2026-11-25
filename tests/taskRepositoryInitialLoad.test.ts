@@ -17,8 +17,6 @@ function makeTask(index: number, filePath = 'notes/p.md'): GCTask {
 		lineNumber: index + 1,
 		content: `- [ ] 任务${index}`,
 		description: `任务${index}`,
-		completed: false,
-		priority: 'normal',
 	};
 }
 

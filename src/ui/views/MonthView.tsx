@@ -14,7 +14,7 @@ import { applyStatusFilter, applyTagFilter, applySort } from '../utils/taskFilte
 import { TaskCard } from '../components/TaskCard';
 import { updateTaskProperties } from '../../tasks/taskUpdater';
 import { toISOStringLocal } from '../../dateUtils/timezone';
-import { createMonthWheelStep, shiftMonth, getMonthKey, monthTravelDir } from '../utils/monthWheel';
+import { getMonthKey, monthTravelDir } from '../utils/monthWheel';
 import { MOTION, easeOutTransition } from '../motion';
 import { generateVirtualInstances } from '../../tasks/virtualTaskGenerator';
 import { buildMonthTimelineModel, getTaskInterval, clampSingleFieldWrite } from './week/timelineModel';
@@ -41,6 +41,31 @@ function findTaskById(tasks: GCTask[], taskId: string): GCTask | null {
 }
 
 /**
+ * 同步「只读细滚动条」滑块位置（原生滚动条已隐藏）。
+ * 滚动条仅用于指示溢出内容的位置，不响应拖拽（pointer-events: none）。
+ */
+function updateScrollThumb(scroller: HTMLElement): void {
+	const thumb = scroller.parentElement?.querySelector<HTMLElement>(
+		`.${MonthViewClasses.elements.scrollThumb}`
+	);
+	if (!thumb) return;
+	const { scrollTop, scrollHeight, clientHeight } = scroller;
+	if (scrollHeight <= clientHeight + 1) {
+		setCssProps(thumb, { display: 'none' });
+		return;
+	}
+	const ratio = clientHeight / scrollHeight;
+	const thumbH = Math.max(8, clientHeight * ratio);
+	const maxScroll = scrollHeight - clientHeight;
+	const offset = maxScroll > 0 ? (scrollTop / maxScroll) * (clientHeight - thumbH) : 0;
+	setCssProps(thumb, {
+		display: 'block',
+		height: `${thumbH}px`,
+		transform: `translateY(${offset}px)`,
+	});
+}
+
+/**
  * React 月视图（时间线语义版）
  * 7 列 × N 周网格；跨日区间任务渲染为每周行顶部的横跨条（周内钳制 + 延续箭头 + 时刻标注，
  * 行数受 taskLimit 上限防撑高格子），单日/定时任务在锚日格内显示卡片（同受 taskLimit）；
@@ -58,24 +83,49 @@ export function MonthView(): JSX.Element {
 	// 稳定回调：TaskCard 已 memo，内联箭头函数会使 memo 失效
 	const handleCardRefresh = useCallback(() => refreshTasks(), [refreshTasks]);
 
-	// ===== 滚轮切月：悬停月视图滚动即切换月份（累计阈值 + 冷却防惯性连跳） =====
+	// ===== 滚轮行为：日期格内容溢出时滚动其内容；空白处不响应（不切月） =====
 	// 原生监听（passive: false）而非 React onWheel：后者在根容器注册为 passive，
-	// preventDefault 可能失效；月视图内容不溢出，滚轮原本无滚动目标，无冲突。
+	// preventDefault 可能失效。空白处滚轮不再切月（用户需求），交给浏览器默认行为。
+	//
+	// 关键：监听必须挂在「不随月份重建」的稳定容器上。
+	// 月网格本体是 <motion.div key={monthKey}>，切月时 key 变化会被 React 销毁重建；
+	// 若监听挂在其上，切一次月后监听器就绑在已销毁的旧节点上，滚轮随即失效。
+	// 因此 ref 指向外层常驻的 .gc-month-anim。
 	const viewRef = useRef<HTMLDivElement>(null);
-	const stepWheelRef = useRef(createMonthWheelStep());
+
+	// 滚动条位置同步（原生滚动条已隐藏，用自定义细条只读显示）
+	const syncThumb = useCallback((scroller: HTMLElement): void => {
+		updateScrollThumb(scroller);
+	}, []);
 
 	useEffect(() => {
 		const el = viewRef.current;
 		if (!el) return;
 		const onWheel = (e: WheelEvent) => {
-			const dir = stepWheelRef.current(e.deltaY, e.deltaMode, Date.now());
-			if (dir === 0) return;
-			e.preventDefault();
-			setCurrentDate(shiftMonth(currentDate, dir));
+			const target = e.target as HTMLElement | null;
+
+			// 任意日期格（当月 / 非当月）内：内容溢出则滚动其任务列表。
+			// 用 closest 限定在「当前在场的网格」内查找，避免 popLayout 退场中的旧网格干扰。
+			const cell = target?.closest?.(`.${MonthViewClasses.elements.dayCell}`);
+			if (!cell) return; // 网格外空白：不拦截，不切月
+
+			const scroller = cell.querySelector<HTMLElement>(`.${MonthViewClasses.elements.tasks}`);
+			if (scroller && scroller.scrollHeight > scroller.clientHeight + 1) {
+				e.preventDefault();
+				const delta = e.deltaMode === 1
+					? e.deltaY * 33
+					: e.deltaMode === 2
+						? e.deltaY * scroller.clientHeight
+						: e.deltaY;
+				scroller.scrollTop += delta;
+				// 滚动后同步滚动条位置
+				syncThumb(scroller);
+			}
+			// 无溢出内容的格子：不拦截（保持原有滚轮行为）
 		};
 		el.addEventListener('wheel', onWheel, { passive: false });
 		return () => el.removeEventListener('wheel', onWheel);
-	}, [currentDate, setCurrentDate]);
+	}, [syncThumb]);
 
 	// ===== 相邻月切月动画：方向由上次渲染的月份键推导（±1 平移 / 其余淡入淡出） =====
 	const monthKey = getMonthKey(currentDate);
@@ -96,9 +146,7 @@ export function MonthView(): JSX.Element {
 	const config = useMemo(() => ({
 		...MonthViewConfig,
 		variant: 'timeline' as const,
-		showCheckbox: plugin.settings.monthViewShowCheckbox,
 		showTags: plugin.settings.monthViewShowTags,
-		showPriority: plugin.settings.monthViewShowPriority,
 		showTicktick: plugin.settings.monthViewShowTicktick,
 	}), [plugin.settings]);
 
@@ -131,12 +179,39 @@ export function MonthView(): JSX.Element {
 	// 月视图时间线模型：跨日横跨条 + 格内任务（锚日语义）；横跨条行数受 taskLimit 上限
 	const monthModel = useMemo(() => {
 		if (!monthData) return [];
-		const combined = sortTasks([...scoped, ...virtualInstances], filter.sort).filter((t) => !t.cancelled);
+		const combined = sortTasks([...scoped, ...virtualInstances], filter.sort);
 		return buildMonthTimelineModel(combined, monthData.weeks, startField, endField, taskLimit);
 	}, [scoped, virtualInstances, monthData, filter.sort, startField, endField, taskLimit]);
 
 	// 任务全集（拖放源查找）
-	const dragLookupTasks = useMemo(() => tasks.filter((t) => !t.cancelled), [tasks]);
+	const dragLookupTasks = useMemo(() => tasks, [tasks]);
+
+	/**
+	 * 每日任务计数（日期头右侧徽标）：格内锚定任务 + 覆盖当天的跨天横跨条。
+	 * 跨天条按 model 的 startCol/endCol 逐日累加（周内已钳制，不会重复计数）；
+	 * 计数口径为「该天实际承载的任务数」，与格内可见卡片数 + 跨天条数一致。
+	 */
+	const dayTaskCounts = useMemo(() => {
+		const counts = new Map<string, number>();
+		const bump = (key: string) => counts.set(key, (counts.get(key) || 0) + 1);
+		monthModel.forEach((weekModel, weekIndex) => {
+			if (!weekModel) return;
+			// 格内锚定任务
+			weekModel.cells.forEach((cellTasks, key) => {
+				for (let i = 0; i < cellTasks.length; i++) bump(key);
+			});
+			// 跨天横跨条：按列覆盖到对应日期
+			const week = monthData?.weeks[weekIndex];
+			if (!week) return;
+			for (const bar of weekModel.spanBars) {
+				for (let col = bar.startCol; col <= bar.endCol; col++) {
+					const day = week.days[col];
+					if (day) bump(toISOStringLocal(day.date));
+				}
+			}
+		});
+		return counts;
+	}, [monthModel, monthData]);
 
 	// ===== 拖放落点：语义与画布对齐 =====
 	const handleDayDrop = useCallback(async (e: ReactDragEvent, targetDate: Date) => {
@@ -207,11 +282,10 @@ export function MonthView(): JSX.Element {
 	const monthFontSize = plugin.settings.monthLunarFontSize || 10;
 
 	return (
-		<div className="gc-month-anim">
+		<div className="gc-month-anim" ref={viewRef}>
 			<AnimatePresence initial={false} custom={slideDir} mode="popLayout">
 				<motion.div
 					key={monthKey}
-					ref={viewRef}
 					className="gc-view gc-view--month"
 					custom={slideDir}
 					variants={monthSlideVariants}
@@ -278,8 +352,6 @@ export function MonthView(): JSX.Element {
 							].filter(Boolean).join(' ');
 							const key = toISOStringLocal(day.date);
 							const dayTasks = weekModel?.cells.get(key) || [];
-							const displayTasks = dayTasks.slice(0, taskLimit);
-							const hasMore = dayTasks.length > taskLimit;
 
 							const lunarEl = day.lunarText && plugin.settings.showLunar
 								? (
@@ -324,9 +396,28 @@ export function MonthView(): JSX.Element {
 									<div className={MonthViewClasses.elements.dayHeader}>
 										<div className={MonthViewClasses.elements.dayNumber}>{day.day.toString()}</div>
 										{lunarEl}
+										{(() => {
+											const count = dayTaskCounts.get(key) || 0;
+											if (count <= 0) return null;
+											return (
+												<div
+													className={MonthViewClasses.elements.taskCount}
+													title={i18n.t('views.monthView.taskCountTip', { count })}
+												>
+													{count > 99 ? '99+' : count}
+												</div>
+											);
+										})()}
 									</div>
-									<div className={MonthViewClasses.elements.tasks} style={{ paddingTop: `${stripH}px` }}>
-										{displayTasks.map((t) => (
+									{/* 所有日期格：显示全部任务（不受 taskLimit 截断），内容溢出时可滚动，
+									    并挂只读细滚动条指示位置 */}
+									<div
+										className={`${MonthViewClasses.elements.tasks} ${MonthViewClasses.modifiers.tasksScrollable}`}
+										style={{ paddingTop: `${stripH}px` }}
+										onScroll={(e) => updateScrollThumb(e.currentTarget)}
+										ref={(el) => { if (el) window.requestAnimationFrame(() => updateScrollThumb(el)); }}
+									>
+										{dayTasks.map((t) => (
 											<TaskCard
 												key={taskKey(t)}
 												task={t}
@@ -335,11 +426,9 @@ export function MonthView(): JSX.Element {
 												onRefresh={handleCardRefresh}
 											/>
 										))}
-										{hasMore ? (
-											<div className={MonthViewClasses.elements.taskMore}>
-												{i18n.t('common.more', { count: dayTasks.length - taskLimit })}
-											</div>
-										) : null}
+									</div>
+									<div className={MonthViewClasses.elements.scrollTrack} aria-hidden="true">
+										<div className={MonthViewClasses.elements.scrollThumb} />
 									</div>
 								</div>
 							);

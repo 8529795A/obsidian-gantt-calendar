@@ -52,6 +52,12 @@ Author: sugar
 
 	/* 主题色 + 状态色（随主题切换） */
 	--gc-accent: var(--interactive-accent);
+	/* 日历底板：非常浅的天蓝（日/周视图画布底色，便于区分任务块与背景）。
+	   直接硬编码色值，不用 color-mix/var(--color-blue)——避免主题缺失变量或
+	   color-mix 不被支持时整条声明失效（表现为「颜色没生效」）。
+	   #EFF6FF ≈ 6% 蓝(#3884FF) 混白（等同 Tailwind blue-50），极淡天蓝，
+	   白底任务块仍能浮起，黑字对比度充足 */
+	--gc-canvas-tint: #EFF6FF;
 	--gc-accent-soft: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
 	--gc-accent-wash: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
 	--gc-on-accent: var(--text-on-accent);

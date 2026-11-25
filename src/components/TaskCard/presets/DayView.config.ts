@@ -8,10 +8,8 @@ export const DayViewConfig: TaskCardConfig = {
 	// 基础配置
 	viewModifier: 'day',
 
-	// 元素显示控制（checkbox/tags/priority/ticktick 由视图层按用户设置覆盖）
-	showCheckbox: true,
+	// 元素显示控制（tags/ticktick 由视图层按用户设置覆盖）
 	showTags: true,
-	showPriority: true,
 	showTicktick: true,
 	showDescription: true,
 	showFileLocation: false,    // 日视图不显示文件位置

@@ -17,17 +17,13 @@ type DatePrecisionMap = Partial<Record<DateFieldType, 'day' | 'time'>>;
  * 任务更新参数
  */
 export interface TaskUpdates {
-	completed?: boolean;
-	cancelled?: boolean;  // 取消状态，使用 [-] 复选框
-	status?: TaskStatusType;  // 任务状态类型
-	priority?: 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal';
+	status?: TaskStatusType;  // 任务状态类型（纯颜色标签）
+	details?: string | null;  // 任务详情（任务行下方的多行内容），null 表示清除
 	repeat?: string | null;  // 周期规则，null 表示清除
 	createdDate?: Date | null;
 	startDate?: Date | null;
 	scheduledDate?: Date | null;
 	dueDate?: Date | null;
-	cancelledDate?: Date | null;
-	completionDate?: Date | null;
 	content?: string;
 	tags?: string[];
 	metadataFields?: MetadataField[] | null;
@@ -39,10 +35,7 @@ export interface TaskUpdates {
  * 合并后的任务数据
  */
 interface MergedTask {
-	completed: boolean;
-	cancelled?: boolean;  // 取消状态
 	status?: TaskStatusType;  // 任务状态类型
-	priority?: string;
 	description: string;
 	tags?: string[];  // 任务标签
 	metadataFields?: MetadataField[];  // 统一内联元数据字段列表
@@ -51,8 +44,6 @@ interface MergedTask {
 	startDate?: Date;
 	scheduledDate?: Date;
 	dueDate?: Date;
-	cancelledDate?: Date;
-	completionDate?: Date;
 	datePrecision?: DatePrecisionMap;
 }
 
@@ -65,8 +56,6 @@ function getDateEmoji(field: keyof MergedTask): string {
 		startDate: '🛫',
 		scheduledDate: '⏳',
 		dueDate: '📅',
-		cancelledDate: '❌',
-		completionDate: '✅',
 	};
 	return map[field] || '';
 }
@@ -80,33 +69,16 @@ function getDataviewField(field: keyof MergedTask): string {
 		startDate: 'start',
 		scheduledDate: 'scheduled',
 		dueDate: 'due',
-		cancelledDate: 'cancelled',
-		completionDate: 'completion',
 	};
 	return map[field] || '';
-}
-
-/**
- * 获取优先级 emoji（Tasks 格式）
- */
-function getPriorityEmoji(priority: 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal' | undefined): string {
-	const map: Record<string, string> = {
-		highest: '🔺',
-		high: '⏫',
-		medium: '🔼',
-		low: '🔽',
-		lowest: '⏬',
-		normal: '',
-	};
-	return map[priority || ''] || '';
 }
 
 /**
  * 序列化任务为文本行
  *
  * 按照固定顺序构建任务行：
- * Tasks 格式: [复选框] [全局过滤] [标签] [描述] [元数据字段] [优先级] [创建] [开始] [计划] [截止] [取消] [完成]
- * Dataview 格式: [复选框] [全局过滤] [标签] [描述] [元数据字段] [priority] [created] [start] [scheduled] [due] [cancelled] [completion]
+ * Tasks 格式: [复选框] [全局过滤] [标签] [描述] [元数据字段] [创建] [开始] [计划] [截止]
+ * Dataview 格式: [复选框] [全局过滤] [标签] [描述] [元数据字段] [created] [start] [scheduled] [due]
  *
  * @param app Obsidian App 实例（用于访问插件设置）
  * @param task 原始任务对象
@@ -142,12 +114,7 @@ export function serializeTask(
 	}
 
 	const merged: MergedTask = {
-		completed: updates.completed !== undefined ? updates.completed : task.completed,
-		cancelled: updates.cancelled !== undefined ? updates.cancelled : task.cancelled,
 		status: updates.status !== undefined ? updates.status : task.status,
-		priority: updates.priority !== undefined
-			? getPriorityEmoji(updates.priority)
-			: getPriorityEmoji((task.priority || 'normal') as 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal'),
 		description: finalDescription,
 		tags: updates.tags !== undefined ? updates.tags : task.tags,
 		metadataFields: updates.metadataFields !== undefined ? (updates.metadataFields || undefined) : task.metadataFields,
@@ -157,8 +124,6 @@ export function serializeTask(
 		startDate: updates.startDate !== undefined ? (updates.startDate || undefined) : task.startDate,
 		scheduledDate: updates.scheduledDate !== undefined ? (updates.scheduledDate || undefined) : task.scheduledDate,
 		dueDate: updates.dueDate !== undefined ? (updates.dueDate || undefined) : task.dueDate,
-		cancelledDate: updates.cancelledDate !== undefined ? (updates.cancelledDate || undefined) : task.cancelledDate,
-		completionDate: updates.completionDate !== undefined ? (updates.completionDate || undefined) : task.completionDate,
 		datePrecision: updates.datePrecision !== undefined ? updates.datePrecision : task.datePrecision,
 	};
 
@@ -172,18 +137,12 @@ export function serializeTask(
 	// 3. 构建任务行的各个部分
 	const parts: string[] = [];
 
-	// 复选框
+	// 复选框符号：仅由状态决定（状态即颜色标签，无完成/取消语义）
 	let checkboxSymbol = ' ';
 	if (merged.status) {
 		const statusConfig = taskStatuses.find((s: { key: TaskStatusType; symbol: string }) => s.key === merged.status);
 		if (statusConfig) {
 			checkboxSymbol = statusConfig.symbol;
-		}
-	} else {
-		if (merged.cancelled) {
-			checkboxSymbol = '-';
-		} else if (merged.completed) {
-			checkboxSymbol = 'x';
 		}
 	}
 	parts.push(`[${checkboxSymbol}]`);
@@ -214,29 +173,6 @@ export function serializeTask(
 		parts.push(`%%[guid:: ${merged.feishuGuid}]%%`);
 	}
 
-	// 优先级（放在描述后）
-	if (format === 'tasks') {
-		const shouldOutputPriority =
-			(updates.priority === undefined && merged.priority && merged.priority !== 'none') ||
-			(updates.priority !== undefined && updates.priority !== 'normal');
-
-		if (shouldOutputPriority && merged.priority) {
-			parts.push(merged.priority);
-		}
-	}
-
-	// 优先级（Dataview 格式）
-	if (format === 'dataview') {
-		const shouldOutputPriority =
-			(updates.priority === undefined && task.priority && task.priority !== 'normal') ||
-			(updates.priority !== undefined && updates.priority !== 'normal');
-
-		if (shouldOutputPriority) {
-			const priorityValue = updates.priority !== undefined ? updates.priority : task.priority;
-			parts.push(`[priority:: ${priorityValue}]`);
-		}
-	}
-
 	// 周期任务规则
 	const repeatValue = updates.repeat !== undefined
 		? (updates.repeat || undefined)
@@ -256,8 +192,6 @@ export function serializeTask(
 		'startDate',
 		'scheduledDate',
 		'dueDate',
-		'cancelledDate',
-		'completionDate'
 	];
 
 	for (const field of dateOrder) {

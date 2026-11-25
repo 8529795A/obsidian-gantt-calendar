@@ -20,14 +20,6 @@
     "none": "None",
     "noContent": "No content",
     "fileNotFound": "File not found: {{path}}",
-    "priority": {
-      "highest": "Highest",
-      "high": "High",
-      "medium": "Medium",
-      "normal": "Normal",
-      "low": "Low",
-      "lowest": "Lowest"
-    },
     "weekdays": {
       "mon": "Mon",
       "tue": "Tue",
@@ -291,18 +283,6 @@
           "description": "Target heading when adding new tasks in Daily Notes (leave empty to append to file end)",
           "placeholder": "e.g., ## Work Tasks"
         },
-        "defaultPriority": {
-          "name": "Default Task Priority",
-          "description": "Default priority when creating new tasks",
-          "options": {
-            "highest": "🔺 Highest",
-            "high": "⏫ High",
-            "medium": "🔼 Medium",
-            "low": "🔽 Low",
-            "lowest": "⏬ Lowest",
-            "normal": "None"
-          }
-        },
         "recurringLimit": {
           "name": "Recurring Task Instance Display Limit",
           "description": "Maximum number of future virtual instances displayed per recurring task in week/month views. Set to 0 to hide virtual instances."
@@ -434,7 +414,6 @@
       "chips": {
         "checkbox": "Checkbox",
         "tags": "Tags",
-        "priority": "Priority",
         "extraContent": "Extra Content"
       },
       "views": {
@@ -871,8 +850,8 @@
     },
     "createTask": {
       "title": "Create New Task",
-      "descriptionLabel": "Task Description *",
-      "descriptionPlaceholder": "Enter task description...",
+      "descriptionLabel": "Task Title *",
+      "descriptionPlaceholder": "Enter task title...",
       "submitHint": "Press Enter to submit",
       "errorEmptyDescription": "Please enter a task description",
       "errorDateOrder": "Start date cannot be after due date",
@@ -927,8 +906,11 @@
     },
     "editTask": {
       "title": "Edit Task",
-      "descriptionLabel": "Task Description",
-      "priorityLabel": "Priority",
+      "descriptionLabel": "Task Title",
+      "detailsLabel": "Details",
+      "detailsHint": "Write it exactly like Obsidian: ==highlight==, Tab indentation and lists are preserved; the whole block is indented as task sub-content on save",
+      "detailsPlaceholder": "Notes, links, checklist… (optional)",
+      "statusLabel": "Status",
       "recurrenceLabel": "Recurrence",
       "datesLabel": "Date Settings",
       "submitHint": "Press Enter to submit",
@@ -1004,7 +986,6 @@
       "header": "Sort By (click to toggle)",
       "options": {
         "dueDate": "Due Date",
-        "priority": "Priority",
         "status": "Status",
         "tags": "Tags",
         "description": "Description",
@@ -1162,15 +1143,8 @@
     "editTask": "Edit Task",
     "createNote": "Create Task Note: Same Name",
     "createNoteAlias": "Create Task Note: Alias",
-    "priority": {
-      "highest": "Highest",
-      "high": "High",
-      "medium": "Medium",
-      "normal": "Normal",
-      "low": "Low",
-      "lowest": "Lowest"
-    },
     "statusImportant": "🔴 Important",
+    "statusLabel": "Status",
     "statusQuestion": "🟠 Question",
     "postpone": {
       "days1": "Postpone 1 Day",
@@ -1198,8 +1172,6 @@
       "postponeFailed": "Failed to postpone task",
       "restored": "Task restored",
       "restoreFailed": "Failed to restore task",
-      "priorityUpdated": "Priority updated",
-      "priorityUpdateFailed": "Failed to update priority",
       "statusUpdated": "Task status updated to: {{label}}",
       "statusUpdateFailed": "Failed to update task status",
       "cancel": {
@@ -1322,7 +1294,8 @@
         "Fri",
         "Sat",
         "Sun"
-      ]
+      ],
+      "taskCountTip": "{{count}} tasks on this day"
     },
     "weekView": {
       "weekdays": [
@@ -1347,7 +1320,8 @@
       "updateTaskFailed": "Failed to update task",
       "updateDateFailed": "Failed to update task date",
       "switchToPreview": "Switch to preview mode",
-      "switchToEdit": "Switch to edit mode"
+      "switchToEdit": "Switch to edit mode",
+      "splitCanvasHint": "Note: tasks spanning 12:00 are split across both panes; their clipped edges cannot be dragged. Use the edit panel to change the time."
     },
     "taskView": {
       "loading": "Loading...",
@@ -1379,22 +1353,11 @@
       "noMatchingTasks": "No matching tasks",
       "filterBar": {
         "statusFilter": "Status Filter",
-        "priorityFilter": "Priority Filter",
         "tagFilter": "Tag Filter",
         "sort": "Sort",
         "dateFilter": "Date Filter"
       },
-      "priority": {
-        "all": "All",
-        "highest": "Highest",
-        "high": "High",
-        "medium": "Medium",
-        "normal": "Normal",
-        "low": "Low",
-        "lowest": "Lowest"
-      },
       "sortOptions": {
-        "byPriority": "By Priority",
         "byDueDate": "By Due Date",
         "byStartDate": "By Start Date",
         "ascending": "Ascending",
@@ -1459,7 +1422,6 @@
     }
   },
   "taskCard": {
-    "priority": "Priority",
     "due": "Due",
     "created": "Created",
     "start": "Start",
@@ -1468,7 +1430,8 @@
     "cancelled": "Cancelled",
     "repeat": "Repeat",
     "emptyValue": "(empty)",
-    "fileLocation": "Location"
+    "fileLocation": "Location",
+    "detailsMore": "…and {{count}} more line(s)"
   },
   "gantt": {
     "taskInfoIncomplete": "Task information incomplete",

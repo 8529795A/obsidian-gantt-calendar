@@ -107,23 +107,6 @@ export class RegularExpressions {
      */
     public static readonly Tasks = {
         /**
-         * 优先级 emoji 符号常量
-         * 用于匹配和序列化任务优先级
-         */
-        prioritySymbols: {
-            /** 最高优先级 🔺 */
-            highest: '🔺',
-            /** 高优先级 ⏫ */
-            high: '⏫',
-            /** 中优先级 🔼 */
-            medium: '🔼',
-            /** 低优先级 🔽 */
-            low: '🔽',
-            /** 最低优先级 ⏬ */
-            lowest: '⏬',
-        } as const,
-
-        /**
          * 日期 emoji 符号常量
          * 用于匹配和序列化任务日期字段
          */
@@ -137,9 +120,6 @@ export class RegularExpressions {
             /** 截止日期 📅 (或 📆、🗓) */
             due: '📅',
             /** 取消日期 ❌ */
-            cancelled: '❌',
-            /** 完成日期 ✅ */
-            completion: '✅',
         } as const,
 
         /**
@@ -150,17 +130,6 @@ export class RegularExpressions {
             /** 周期任务 🔁 */
             repeat: '🔁',
         } as const,
-
-        /**
-         * 优先级匹配正则
-         * 捕获组1为优先级 emoji 符号
-         * 使用全局匹配以查找所有优先级标记（虽然任务只应有一个）
-         *
-         * @example
-         * "任务 ⏫" -> 匹配 "⏫"
-         * "🔺 重要任务" -> 匹配 "🔺"
-         */
-        priorityRegex: /\s*(🔺|⏫|🔼|🔽|⏬)\s*/g,
 
         /**
          * 创建日期正则
@@ -259,7 +228,6 @@ export class RegularExpressions {
          * "任务 ⏫" -> 匹配
          * "🔺 重要" -> 匹配
          */
-        anyPriorityRegex: /[🔺⏫🔼🔽⏬]/u,
 
         /**
          * 格式检测正则
@@ -284,12 +252,6 @@ export class RegularExpressions {
      */
     public static readonly Dataview = {
         /**
-         * 优先级值常量
-         * Dataview 格式使用文本值表示优先级
-         */
-        priorityValues: ['highest', 'high', 'medium', 'normal', 'low', 'lowest'] as const,
-
-        /**
          * 日期字段名常量
          * Dataview 格式的字段名映射
          */
@@ -303,22 +265,7 @@ export class RegularExpressions {
             /** 截止日期字段名 */
             due: 'due',
             /** 取消日期字段名 */
-            cancelled: 'cancelled',
-            /** 完成日期字段名 */
-            completion: 'completion',
         } as const,
-
-        /**
-         * 优先级字段正则
-         * 匹配：[priority:: highest|high|medium|low|lowest]
-         * 捕获组1为优先级文本值
-         * 不区分大小写
-         *
-         * @example
-         * "[priority:: high]" -> 匹配，捕获 "high"
-         * "[priority::HIGHEST]" -> 匹配，捕获 "HIGHEST"
-         */
-        priorityRegex: /\[priority::\s*(highest|high|medium|low|lowest)\]/gi,
 
         /**
          * 创建日期正则
@@ -400,7 +347,7 @@ export class RegularExpressions {
          * @example
          * "[priority:: high] [due:: 2024-01-15]" -> 可多次匹配
          */
-        anyFieldRegex: /\[(priority|created|start|scheduled|due|cancelled|completion|repeat)::\s*([^\]]+)\]/gi,
+        anyFieldRegex: /\[(priority|created|start|scheduled|due|repeat)::\s*([^\]]+)\]/gi,
 
         /**
          * 格式检测正则
@@ -412,7 +359,7 @@ export class RegularExpressions {
          * "- [ ] 任务 [repeat:: every day]" -> 匹配（Dataview 格式）
          * "- [ ] 普通任务" -> 不匹配
          */
-        formatDetectionRegex: /\[(priority|created|start|scheduled|due|cancelled|completion|repeat)::\s*[^\]]+\]/i,
+        formatDetectionRegex: /\[(priority|created|start|scheduled|due|repeat)::\s*[^\]]+\]/i,
     } as const;
 
     // ==================== 描述提取正则 ====================
@@ -450,7 +397,7 @@ export class RegularExpressions {
          * "任务 [priority:: high] 内容" -> "任务  内容"
          * "[due:: 2024-01-15]" -> ""
          */
-        removeDataviewField: /\s*\[(priority|created|start|scheduled|due|cancelled|completion|repeat)::[^\]]+\]\s*/gi,
+        removeDataviewField: /\s*\[(priority|created|start|scheduled|due|repeat)::[^\]]+\]\s*/gi,
 
         /**
          * 移除 Tasks 周期任务属性
@@ -533,19 +480,6 @@ export class RegularExpressions {
          * "%%备注%%" -> ""
          */
         removeTicktick: /\s*%%.+?%%\s*/g,
-    } as const;
-
-    // ==================== 飞书摘要清理正则 ====================
-
-    /**
-     * 清理发送到飞书 summary 的 URL 格式
-     *
-     * 飞书 summary 不接受 URL，需剥离 markdown 链接语法只保留显示文本。
-     * wikilink `[[note]]` 是纯文本不含 URL，可直接传输。
-     */
-    public static readonly FeishuSummarySanitize = {
-        /** 剥离 markdown 链接 `[text](url)` → `text` */
-        stripMarkdownLink: /\[([^\]]*)\]\([^)]*\)/g,
     } as const;
 
     // ==================== 复选框状态正则 ====================

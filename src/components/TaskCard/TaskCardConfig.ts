@@ -44,14 +44,10 @@ export interface TaskCardConfig {
 
 	/** ===== 元素显示控制 ===== */
 
-	/** 显示复选框 */
-	showCheckbox: boolean;
 	/** 显示任务描述 */
 	showDescription: boolean;
 	/** 显示标签 */
 	showTags: boolean;
-	/** 显示优先级 */
-	showPriority: boolean;
 	/** 显示文件位置 */
 	showFileLocation: boolean;
 	/** 显示警告图标 */
@@ -83,6 +79,8 @@ export interface TaskCardConfig {
 	compact?: boolean;
 	/** 描述最大行数 */
 	maxLines?: number;
+	/** 标签最多显示个数，超出部分折叠为 "+N" 徽标；缺省不限制 */
+	maxTags?: number;
 	/** 布局变体（时间轴内的卡片传 'timeline'） */
 	variant?: CardVariant;
 

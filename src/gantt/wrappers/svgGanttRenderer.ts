@@ -23,7 +23,6 @@ import type { IPluginContext,  GCTask } from '../../types';
 import { GanttClasses, setCssProps } from '../../utils/bem';
 import { TooltipManager, type MousePosition } from '../../utils/tooltipManager';
 import { isTouchNow } from '../../ui/utils/platform';
-import { Logger } from '../../utils/logger';
 import { LinkRenderer } from '../../utils/linkRenderer';
 import { getTodayInTimezone } from '../../dateUtils/timezone';
 import { formatDate } from '../../dateUtils/dateUtilsIndex';
@@ -217,8 +216,6 @@ export class SvgGanttRenderer {
 		return old.start !== current.start ||
 			   old.end !== current.end ||
 			   old.leadStart !== current.leadStart ||
-			   old.progress !== current.progress ||
-			   old.completed !== current.completed ||
 			   old.name !== current.name ||
 			   old.custom_class !== current.custom_class;
 	}
@@ -812,9 +809,6 @@ export class SvgGanttRenderer {
 			const rowGroup = activeDocument.createElementNS(ns, 'g');
 			rowGroup.setAttribute('data-task-row', task.id);
 
-			// 直接从 GanttChartTask 获取信息（不需要查找 originalTask）
-			const isCompleted = task.completed || task.progress === 100;
-
 			// 行背景（所有行都添加，用于悬停高亮）
 			const rowBg = activeDocument.createElementNS(ns, 'rect');
 			rowBg.setAttribute('x', '0');
@@ -860,11 +854,6 @@ export class SvgGanttRenderer {
 			contentDiv.className = GanttClasses.elements.taskContentCell;
 			contentDiv.addClass('gc-u-flex', 'gc-u-items-center', 'gc-u-w-full');
 			setCssProps(contentDiv, { height: '100%', fontSize: '12px', color: 'var(--text-normal)', gap: '8px', padding: '0 8px' });
-
-			// === 创建复选框 ===
-			const checkbox = this.createTaskCheckbox(task, isCompleted);
-			contentDiv.appendChild(checkbox);
-
 			// === 创建可点击的文本容器 ===
 			const textContainer = createDiv();
 			textContainer.className = 'gantt-task-list-item__text';
@@ -923,43 +912,6 @@ export class SvgGanttRenderer {
 		} else {
 			container.textContent = text;
 		}
-	}
-
-	/**
-	 * 创建任务复选框
-	 */
-	private createTaskCheckbox(
-		ganttTask: GanttChartTask,
-		isCompleted: boolean
-	): HTMLInputElement {
-		const checkbox = createEl('input');
-		checkbox.type = 'checkbox';
-		checkbox.checked = isCompleted;
-		checkbox.className = GanttClasses.elements.taskCheckbox;
-		checkbox.addClass('gc-u-pointer');
-		setCssProps(checkbox, { flexShrink: '0', width: '16px', height: '16px', margin: '0', accentColor: 'var(--interactive-accent)' });
-
-		// 阻止点击事件冒泡到任务列表项
-		checkbox.addEventListener('click', (e) => {
-			e.stopPropagation();
-		});
-
-		// 监听复选框变化
-		checkbox.addEventListener('change', (e) => {
-			e.stopPropagation();
-			const newCompletedState = (e.target as HTMLInputElement).checked;
-
-			// 通过 onProgressChange 回调更新任务
-			if (this.onProgressChange) {
-				Promise.resolve(this.onProgressChange(ganttTask, newCompletedState ? 100 : 0)).catch((error) => {
-					Logger.error('SvgGanttRenderer', 'Error updating task completion:', error);
-					// 恢复复选框状态
-					checkbox.checked = isCompleted;
-				});
-			}
-		});
-
-		return checkbox;
 	}
 
 	/**
@@ -1151,43 +1103,14 @@ export class SvgGanttRenderer {
 			bar.setAttribute('height', '24');
 			bar.setAttribute('rx', '4');
 
-			// 根据状态设置颜色
-			let fillColor = 'var(--interactive-accent)';
-			if (task.progress === 100) {
-				fillColor = 'var(--gc-task-completed, #52c41a)';
-			} else if (task.custom_class) {
-				// 解析自定义类名获取颜色
-				if (task.custom_class.includes('priority-highest')) {
-					fillColor = 'var(--priority-highest-color, #ef4444)';
-				} else if (task.custom_class.includes('priority-high')) {
-					fillColor = 'var(--priority-high-color, #f97316)';
-				} else if (task.custom_class.includes('priority-medium')) {
-					fillColor = 'var(--priority-medium-color, #eab308)';
-				} else if (task.custom_class.includes('priority-low')) {
-					fillColor = 'var(--priority-low-color, #22c55e)';
-				}
-			}
+			// 条颜色：统一使用主题强调色（优先级功能已移除）
+			const fillColor = 'var(--interactive-accent)';
 
 			bar.setAttribute('fill', fillColor);
 			bar.setAttribute('opacity', '0.85');
 			bar.setAttribute('cursor', 'pointer');
 			bar.classList.add('task-bar');
 
-			// 进度条
-			let progressElement: SVGRectElement | null = null;
-			if (task.progress > 0 && task.progress < 100) {
-				const progressWidth = barWidth * task.progress / 100;
-				const elem = activeDocument.createElementNS(ns, 'rect') as SVGRectElement;
-				elem.setAttribute('x', String(x));
-				elem.setAttribute('y', String(y));
-				elem.setAttribute('width', String(Math.max(progressWidth - 8, 0)));
-				elem.setAttribute('height', '24');
-				elem.setAttribute('rx', '4');
-				elem.setAttribute('fill', fillColor);
-				elem.setAttribute('opacity', '0.4');
-				progressElement = elem;
-				elem.classList.add('task-progress');
-			}
 
 			// 条尾时刻标注：任一端点带时刻的任务（与时间画布 timeLabel 同语义）
 			let timeBadge: SVGTextElement | null = null;
@@ -1280,9 +1203,6 @@ export class SvgGanttRenderer {
 					this.hidePopup();
 				});
 				barGroup.appendChild(leadBarEl);
-			}
-			if (progressElement) {
-				barGroup.appendChild(progressElement);  // 进度条
 			}
 			barGroup.appendChild(bar);       // 主任务条
 			barGroup.appendChild(leftHandle);   // 左侧手柄
@@ -1399,12 +1319,6 @@ export class SvgGanttRenderer {
 		allTasks.forEach((task, index) => {
 			const row = svg.querySelector(`[data-task-row="${task.id}"]`);
 			if (row) {
-				// 更新复选框状态
-				const checkbox = row.querySelector('input[type="checkbox"]') as HTMLInputElement;
-				if (checkbox) {
-					const isCompleted = task.completed || task.progress === 100;
-					checkbox.checked = isCompleted;
-				}
 				// 更新序号
 				const numberCell = row.querySelector(`.${GanttClasses.elements.taskNumberCell}`);
 				if (numberCell) {
@@ -1539,32 +1453,8 @@ export class SvgGanttRenderer {
 			bar.setAttribute('width', String(barWidth));
 			bar.setAttribute('y', String(y));
 
-			// 更新颜色（根据完成状态）
-			const isCompleted = task.completed || task.progress === 100;
-			if (isCompleted) {
-				bar.setAttribute('fill', 'var(--checkbox-done)'); // 完成状态颜色
-			} else {
-				// 根据优先级设置颜色
-				const priorityClass = task.custom_class?.split(' ').find(c => c.startsWith('priority-'));
-				if (priorityClass === 'priority-high') {
-					bar.setAttribute('fill', 'var(--tag-fill-hot)');
-				} else if (priorityClass === 'priority-medium') {
-					bar.setAttribute('fill', 'var(--tag-fill-warm)');
-				} else if (priorityClass === 'priority-low') {
-					bar.setAttribute('fill', 'var(--tag-fill-cool)');
-				} else {
-					bar.setAttribute('fill', 'var(--interactive-accent)');
-				}
-			}
-		}
-
-		// 更新进度条
-		const progressRect = barGroup.querySelector('.task-progress') as SVGRectElement;
-		if (progressRect) {
-			const progressWidth = barWidth * (task.progress / 100);
-			progressRect.setAttribute('x', String(x));
-			progressRect.setAttribute('y', String(y));
-			progressRect.setAttribute('width', String(progressWidth));
+			// 颜色：统一使用主题强调色（优先级功能已移除）
+			bar.setAttribute('fill', 'var(--interactive-accent)');
 		}
 
 		// Update lead-in segment (creation → start) geometry.

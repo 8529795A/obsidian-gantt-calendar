@@ -41,6 +41,35 @@
 	font-size: 14px;
 }
 
+/* --- 任务详情（标题下方，与属性区同款灰色底板）--- */
+.gc-task-tooltip .gc-task-tooltip__details {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: -2px 0 8px;
+	padding: 8px 8px 8px 12px;
+	background-color: var(--background-secondary);
+	border-radius: 6px;
+	color: var(--text-muted);
+	font-size: 12px;
+	line-height: 1.5;
+	word-break: break-word;
+}
+
+.gc-task-tooltip .gc-task-tooltip__details-line {
+	/* pre 保留行内缩进层级（Tab/空格），与笔记里一致；
+	   配合 overflow+ellipsis 让超长行单行省略，不撑爆悬浮窗宽度 */
+	white-space: pre;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.gc-task-tooltip .gc-task-tooltip__details-more {
+	color: var(--text-faint);
+	font-size: 11px;
+	font-style: italic;
+}
+
 /* --- 属性区域 --- */
 .gc-task-tooltip .gc-task-tooltip__properties {
 	display: flex;
@@ -88,26 +117,6 @@
 	height: 1px;
 	background-color: rgba(0, 0, 0, 0.06);
 	margin: 2px 0;
-}
-
-.gc-task-tooltip .priority-highest {
-	color: var(--gc-color-red, #d73a49);
-}
-
-.gc-task-tooltip .priority-high {
-	color: var(--gc-color-orange, #e36209);
-}
-
-.gc-task-tooltip .priority-medium {
-	color: var(--gc-color-yellow, #ffd33d);
-}
-
-.gc-task-tooltip .priority-low {
-	color: var(--gc-color-green, #28a745);
-}
-
-.gc-task-tooltip .priority-lowest {
-	color: var(--gc-color-blue, #0366d6);
 }
 
 .gc-task-tooltip .gc-task-tooltip__tags {

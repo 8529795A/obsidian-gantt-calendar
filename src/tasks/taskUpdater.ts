@@ -2,6 +2,7 @@ import { App, TFile } from 'obsidian';
 import { GCTask } from '../types';
 import { serializeTask, TaskUpdates } from './taskSerializer';
 import { parseSingleTaskLine } from './taskParser/main';
+import { findDetailEndLine, formatDetailLines, detectTabIndent } from './taskDetails';
 import { Logger } from '../utils/logger';
 
 // ==================== 文件级写锁 ====================
@@ -152,53 +153,14 @@ async function readTaskLine(app: App, task: GCTask): Promise<{ file: TFile; cont
 }
 
 /**
- * 更新任务的完成状态
- *
- * **使用场景**：
- * 1. **BaseViewRenderer.ts:107** - 任务复选框点击事件
- *    - 用户点击任务前的复选框时，调用此函数切换任务完成状态
- *    - 完成时自动添加完成日期（completionDate）
- *    - 取消完成时自动移除完成日期
- *
- * @param app Obsidian App 实例
- * @param task 要更新的任务
- * @param completed 是否完成
- * @param enabledFormats 启用的任务格式
- */
-export async function updateTaskCompletion(
-	app: App,
-	task: GCTask,
-	completed: boolean,
-	enabledFormats: string[]
-): Promise<void> {
-	const updates: TaskUpdates = { completed };
-
-	// 标记为完成时添加完成日期，取消完成时移除完成日期
-	if (completed) {
-		updates.completionDate = new Date();
-		// 同步更新状态为 done
-		updates.status = 'done';
-	} else {
-		updates.completionDate = null;
-		// 取消完成时，如果当前状态是 done，则改为 todo；其他状态保持不变
-		if (task.status === 'done') {
-			updates.status = 'todo';
-		}
-	}
-
-	await updateTaskProperties(app, task, updates, enabledFormats);
-}
-
-/**
  * 更新任务的日期字段（由日期筛选字段指定）
  *
  * **使用场景**：
  * 1. **WeekView.ts:89** - 拖拽任务到不同日期时，更新任务的日期字段
- * 2. **contextMenu/commands/cancelTask.ts:16** - 右键菜单取消任务时，设置取消日期
  *
  * @param app Obsidian App
  * @param task 任务对象
- * @param dateFieldName 日期字段名（dueDate, startDate, scheduledDate, createdDate, cancelledDate, completionDate）
+ * @param dateFieldName 日期字段名（dueDate, startDate, scheduledDate, createdDate）
  * @param newDate 新的日期值
  * @param enabledFormats 启用的任务格式
  */
@@ -296,8 +258,24 @@ export async function updateTaskProperties(
 
 		Logger.debug('taskUpdater', 'Final task line:', finalTaskLine);
 
-		// 写回文件
+		// 写回文件：任务行 + 详情块
+		//
+		// 详情是任务行下方属于该列表项的多行内容。updates.details 未提供时不改动详情；
+		// 提供时按新内容重排（null / 空串 = 清除）。为避免误删用户在 Obsidian 里
+		// 手写的详情，仅在显式传入 details 时才触碰详情块。
+		const detailStart = taskLineIndex + 1;
+		const detailEnd = findDetailEndLine(lines, taskLineIndex, indent.length); // 不含
+		const hasDetailUpdate = updates.details !== undefined;
+
 		lines[taskLineIndex] = finalTaskLine;
+
+		if (hasDetailUpdate) {
+			const rawDetail = lines.slice(detailStart, detailEnd);
+			const preferTab = detectTabIndent(rawDetail);
+			const newDetailLines = formatDetailLines(updates.details ?? '', indent, preferTab);
+			lines.splice(detailStart, Math.max(0, detailEnd - detailStart), ...newDetailLines);
+		}
+
 		const newContent = lines.join('\n');
 
 		const writeStart = performance.now();

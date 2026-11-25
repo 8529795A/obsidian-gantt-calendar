@@ -21,18 +21,12 @@ export interface GanttChartTask {
 	start: string;
 	/** 结束日期 (YYYY-MM-DD) */
 	end: string;
-	/** 进度百分比 (0-100) */
-	progress: number;
 	/** 依赖任务ID列表 */
 	dependencies?: string[] | string;
 	/** 自定义CSS类名 */
 	custom_class?: string;
 
 	// ==================== 扩展字段（用于渲染） ====================
-	/** 是否已完成 */
-	completed?: boolean;
-	/** 是否已取消 */
-	cancelled?: boolean;
 	/** 文件路径（用于跳转） */
 	filePath?: string;
 	/** 文件名 */
@@ -57,8 +51,6 @@ export interface GanttChartTask {
 	description?: string;
 	/** 任务标签列表 */
 	tags?: string[];
-	/** 优先级 */
-	priority?: string;
 	/** 源格式类型 */
 	format?: 'tasks' | 'dataview';
 	/** 任务状态类型 */
@@ -72,14 +64,10 @@ export interface GanttChartTask {
 	scheduledDate?: Date;
 	/** 截止日期 */
 	dueDate?: Date;
-	/** 取消日期 */
-	cancelledDate?: Date;
-	/** 完成日期 */
-	completionDate?: Date;
 	/** 周期规则，如 "every day" */
 	repeat?: string;
 	/** Per-field date precision passthrough from the source task (keeps HH:mm on write-back) */
-	datePrecision?: Partial<Record<'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate' | 'cancelledDate' | 'completionDate', 'day' | 'time'>>;
+	datePrecision?: Partial<Record<'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate', 'day' | 'time'>>;
 	/** 结构化内联元数据字段 (%%[key::value]%%) */
 	metadataFields?: MetadataField[];
 }
@@ -139,14 +127,12 @@ export interface GanttTooltipConfig {
 
 /**
  * 日期字段类型（用于任务时间范围）
+ *
+ * 统一复用 settings/types 的定义，避免两处枚举漂移
+ * （曾各自声明，删除完成/取消日期后类型不再兼容）。
  */
-export type DateFieldType =
-	| 'createdDate'
-	| 'startDate'
-	| 'scheduledDate'
-	| 'dueDate'
-	| 'completionDate'
-	| 'cancelledDate';
+import type { DateFieldType } from '../settings/types';
+export type { DateFieldType };
 
 /**
  * 甘特图视图状态
@@ -174,12 +160,6 @@ export interface GanttStyleConfig {
 	barColor: string;
 	/** 已完成任务颜色 */
 	completedColor: string;
-	/** 高优先级颜色 */
-	highestPriorityColor: string;
-	/** 中优先级颜色 */
-	mediumPriorityColor: string;
-	/** 低优先级颜色 */
-	lowPriorityColor: string;
 }
 
 /**

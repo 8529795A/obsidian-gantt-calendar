@@ -86,24 +86,14 @@ export interface CalendarMonth {
  * 支持两种格式：Tasks 插件的 emoji 格式和 Dataview 插件的 field 格式。
  *
  * 格式示例：
- * - Tasks (emoji): `- [ ] 🎯 Task title ⏫ ➕ 2025-01-10 📅 2025-01-15`
- * - Dataview (field): `- [ ] 🎯 Task title [priority:: high] [created:: 2025-01-10] [due:: 2025-01-15]`
- *
- * 优先级对应关系（6个档位）：
- * - 🔺 = highest (最高)
- * - ⏫ = high (高)
- * - 🔼 = medium (中高)
- * - 无emoji = normal (普通，默认优先级)
- * - 🔽 = low (低)
- * - ⏬ = lowest (最低)
+ * - Tasks (emoji): `- [ ] 🎯 Task title ➕ 2025-01-10 📅 2025-01-15`
+ * - Dataview (field): `- [ ] 🎯 Task title [created:: 2025-01-10] [due:: 2025-01-15]`
  *
  * 日期 emoji 对应关系：
  * - ➕ = createdDate (创建日期)
  * - 🛫 = startDate (开始日期)
  * - ⏳ = scheduledDate (计划日期)
  * - 📅 = dueDate (截止日期)
- * - ✅ = completionDate (完成日期)
- * - ❌ = cancelledDate (取消日期)
  */
 export interface GCTask {
 	filePath: string;              // 任务所在文件的完整路径
@@ -111,25 +101,21 @@ export interface GCTask {
 	lineNumber: number;            // 任务在文件中的行号
 	content: string;               // 原始任务内容（保留完整格式用于写回）
 	description: string;           // 清理后的任务描述（移除元数据标记，用于显示）
-	completed: boolean;            // 任务是否已完成
-	cancelled?: boolean;           // 任务是否已取消（使用 [-] 复选框）
-	status?: TaskStatusType;       // 任务状态类型
+	details?: string;              // 任务详情：任务行下方属于该列表项的多行内容（已做缩进归一化）
+	status?: TaskStatusType;       // 任务状态类型（纯颜色标签，无完成/取消语义）
 	format?: 'tasks' | 'dataview'; // 源格式：用于写回时选择正确的字段样式
-	priority: string;              // 优先级：highest, high, medium, normal, low, lowest（默认normal）
 	tags?: string[];               // 任务标签列表
 	createdDate?: Date;            // 创建日期
 	startDate?: Date;              // 开始日期
 	scheduledDate?: Date;          // 计划日期
 	dueDate?: Date;                // 截止日期
-	cancelledDate?: Date;          // 取消日期
-	completionDate?: Date;         // 完成日期
 	repeat?: string;               // 周期规则，如 "every day", "every week on Monday when done"
 	warning?: string;              // 警告信息：显示任务格式问题或缺失的关键属性
 		ticktick?: string;             // %%content%% 纯文本块（向后兼容，新解析中不再主动赋值）
 		metadataFields?: MetadataField[]; // 统一的内联元数据字段列表（%%[key::value]%%）
 	// 时间精度：记录每个日期字段原始解析时是否包含时间（HH:mm）
 	// 'day' = 全天任务（仅日期），'time' = 定时任务（日期+时间）
-	datePrecision?: Partial<Record<'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate' | 'cancelledDate' | 'completionDate', 'day' | 'time'>>;
+	datePrecision?: Partial<Record<'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate', 'day' | 'time'>>;
 	// 同步相关字段
 	sourceId?: string;             // 数据源特定 ID
 	lastModified?: Date;           // 最后修改时间
@@ -140,15 +126,15 @@ export interface GCTask {
 
 /**
  * 任务排序字段类型
+ *
+ * 2026-11-25：优先级功能已整体移除，`priority` 不再是可排序字段。
  */
 export type SortField =
-	| 'priority'
 	| 'description'
 	| 'createdDate'
 	| 'startDate'
 	| 'scheduledDate'
-	| 'dueDate'
-	| 'completionDate';
+	| 'dueDate';
 
 /**
  * 排序顺序类型
@@ -223,8 +209,6 @@ export function getTaskDateField(task: GCTask, field: DateFieldType): Date | und
 		case 'startDate': return task.startDate;
 		case 'scheduledDate': return task.scheduledDate;
 		case 'dueDate': return task.dueDate;
-		case 'completionDate': return task.completionDate;
-		case 'cancelledDate': return task.cancelledDate;
 	}
 }
 
@@ -238,8 +222,6 @@ export function setTaskDateField(task: GCTask, field: DateFieldType, value: Date
 		case 'startDate': task.startDate = value; break;
 		case 'scheduledDate': task.scheduledDate = value; break;
 		case 'dueDate': task.dueDate = value; break;
-		case 'completionDate': task.completionDate = value; break;
-		case 'cancelledDate': task.cancelledDate = value; break;
 	}
 }
 
@@ -247,7 +229,7 @@ export function setTaskDateField(task: GCTask, field: DateFieldType, value: Date
  * 单日期任务锚定字段回退链：dueDate → scheduledDate → startDate。
  * dateFilterField 设置退场后，只有一个日期字段（或首个命中字段）的任务
  * 以此链决定在日/周/月视图的锚定日与拖拽写入目标；
- * created/completion/cancelled 不参与锚定（完成态另有处理）。
+ * created 不参与锚定。
  */
 export const ANCHOR_DATE_FIELD_CHAIN: readonly DateFieldType[] = ['dueDate', 'scheduledDate', 'startDate'];
 
@@ -266,7 +248,7 @@ export function resolveAnchorDateField(task: GCTask): DateFieldType | null {
 /**
  * 可合并的任务字段类型（用于同步冲突解决）
  */
-export type MergeableTaskField = 'description' | 'completed' | 'completionDate' | 'datePrecision' | 'dueDate' | 'startDate' | 'priority' | 'status' | 'tags';
+export type MergeableTaskField = 'description' | 'datePrecision' | 'dueDate' | 'startDate' | 'status' | 'tags';
 
 /**
  * 安全写入任务的可合并字段
@@ -275,14 +257,11 @@ export type MergeableTaskField = 'description' | 'completed' | 'completionDate' 
 export function setTaskMergeableField(task: GCTask, field: MergeableTaskField, value: unknown): void {
 	switch (field) {
 		case 'description': task.description = value as string; break;
-		case 'completed': task.completed = value as boolean; break;
-		case 'completionDate': task.completionDate = value as Date | undefined; break;
 		case 'datePrecision': task.datePrecision = value
 			? { ...(value as NonNullable<GCTask['datePrecision']>) }
 			: undefined; break;
 		case 'dueDate': task.dueDate = value as Date | undefined; break;
 		case 'startDate': task.startDate = value as Date | undefined; break;
-		case 'priority': task.priority = value as string; break;
 		case 'status': task.status = value as TaskStatusType | undefined; break;
 		case 'tags': task.tags = value as string[] | undefined; break;
 	}

@@ -272,26 +272,6 @@
 }
 
 /* 优先级颜色 */
-.gc-gantt-view__bar-group .priority-highest {
-	fill: var(--priority-highest-color, #ef4444);
-}
-
-.gc-gantt-view__bar-group .priority-high {
-	fill: var(--priority-high-color, #f97316);
-}
-
-.gc-gantt-view__bar-group .priority-medium {
-	fill: var(--priority-medium-color, #eab308);
-}
-
-.gc-gantt-view__bar-group .priority-low {
-	fill: var(--priority-low-color, #22c55e);
-}
-
-.gc-gantt-view__bar-group .priority-lowest {
-	fill: var(--priority-lowest-color, #3b82f6);
-}
-
 /* ============================================
    其他甘特图样式
    ============================================ */

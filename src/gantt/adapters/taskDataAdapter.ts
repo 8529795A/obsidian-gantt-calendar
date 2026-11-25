@@ -7,6 +7,7 @@ import type { GCTask } from '../../types';
 import { getTaskDateField } from '../../types';
 import { buildIntervalTimeLabel } from '../../ui/views/week/timelineModel';
 import type { GanttChartTask, DateFieldType } from '../types';
+import { DEFAULT_TASK_STATUSES } from '../../tasks/taskStatus';
 import type { StatusFilterState } from '../../types';
 
 /**
@@ -79,12 +80,9 @@ export class TaskDataAdapter {
 			end: this.formatDate(normalizedEndDate),
 			leadStart,
 			startSourceField,
-			progress: this.calculateProgress(task),
 			custom_class: this.getCustomClass(task),
 
 			// 保存原始任务信息，避免后续查找
-			completed: task.completed,
-			cancelled: task.cancelled,
 			filePath: task.filePath,
 			fileName: task.fileName,
 			lineNumber: task.lineNumber,
@@ -93,15 +91,12 @@ export class TaskDataAdapter {
 			content: task.content,
 			description: task.description,
 			tags: task.tags,
-			priority: task.priority,
 			format: task.format,
 			status: task.status,
 			createdDate: task.createdDate,
 			startDate: task.startDate,
 			scheduledDate: task.scheduledDate,
 			dueDate: task.dueDate,
-			cancelledDate: task.cancelledDate,
-			completionDate: task.completionDate,
 			repeat: task.repeat,
 			datePrecision: task.datePrecision,
 			metadataFields: task.metadataFields,
@@ -182,20 +177,6 @@ export class TaskDataAdapter {
 	}
 
 	/**
-	 * 计算任务进度百分比
-	 *
-	 * @param task - 任务对象
-	 * @returns 进度百分比 (0-100)
-	 */
-	private static calculateProgress(task: GCTask): number {
-		if (task.completed) return 100;
-		if (task.cancelled) return 0;
-
-		// 可根据更多条件计算进度
-		return 0;
-	}
-
-	/**
 	 * 根据任务状态生成自定义CSS类名
 	 *
 	 * @param task - 任务对象
@@ -204,22 +185,7 @@ export class TaskDataAdapter {
 	private static getCustomClass(task: GCTask): string {
 		const classes: string[] = [];
 
-		// 完成状态
-		if (task.completed) {
-			classes.push('task-completed');
-		}
-
-		// 取消状态
-		if (task.cancelled) {
-			classes.push('task-cancelled');
-		}
-
-		// 优先级
-		if (task.priority) {
-			classes.push(`priority-${task.priority}`);
-		}
-
-		// 自定义状态
+		// 自定义状态（纯颜色标签）
 		if (task.status) {
 			classes.push(`status-${this.sanitizeClassName(task.status)}`);
 		}
@@ -257,7 +223,7 @@ export class TaskDataAdapter {
 		// 状态筛选（支持多选）
 		if (statusFilter.selectedStatuses.length > 0) {
 			filtered = filtered.filter(task => {
-				const taskStatus = task.status || TaskDataAdapter.getInferredStatus(task);
+				const taskStatus = task.status || TaskDataAdapter.getInferredStatus();
 				return statusFilter.selectedStatuses.includes(taskStatus);
 			});
 		}
@@ -309,10 +275,9 @@ export class TaskDataAdapter {
 
 	/**
 	 * 推断任务状态（当任务没有明确的 status 字段时）
+	 * 状态已改为纯颜色标签，无完成/取消语义，统一回退为 'todo'。
 	 */
-	private static getInferredStatus(task: GCTask): string {
-		if (task.completed) return 'done';
-		if (task.cancelled) return 'canceled';
-		return 'todo';
+	private static getInferredStatus(): string {
+		return DEFAULT_TASK_STATUSES[0]?.key ?? 'important';
 	}
 }

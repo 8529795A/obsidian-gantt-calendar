@@ -19,8 +19,6 @@ const mkTask = (tags?: string[]): GCTask => ({
 	lineNumber: 1,
 	content: '',
 	description: 'x',
-	completed: false,
-	priority: 'normal',
 	tags,
 });
 

@@ -33,11 +33,11 @@ import { buildTagHierarchy } from '../tags/TagHierarchyBuilder';
  * // 返回: "🎯 完成项目"
  *
  * // Dataview 格式
- * extractTaskDescription("任务 [priority:: high] [created:: 2024-01-10] [due:: 2024-01-15]")
+ * extractTaskDescription("任务 [created:: 2024-01-10] [due:: 2024-01-15]")
  * // 返回: "任务"
  *
  * // 混合格式
- * extractTaskDescription("任务 ⏫ [due:: 2024-01-15]")
+ * extractTaskDescription("任务 [due:: 2024-01-15]")
  * // 返回: "任务"
  *
  * // 普通文本
@@ -82,10 +82,10 @@ export function extractTaskDescription(content: string): string {
  *
  * @example
  * ```ts
- * extractTasksDescription("任务 ⏫ 📅 2024-01-15")
+ * extractTasksDescription("任务 📅 2024-01-15")
  * // 返回: "任务"
  *
- * extractTasksDescription("任务 ⏫ [due:: 2024-01-15]")
+ * extractTasksDescription("任务 [due:: 2024-01-15]")
  * // 返回: "任务 [due:: 2024-01-15]"
  * ```
  */
@@ -123,10 +123,10 @@ export function extractTasksDescription(content: string): string {
  *
  * @example
  * ```ts
- * extractDataviewDescription("任务 [priority:: high] [due:: 2024-01-15]")
+ * extractDataviewDescription("任务 [due:: 2024-01-15]")
  * // 返回: "任务"
  *
- * extractDataviewDescription("任务 [priority:: high] ⏫")
+ * extractDataviewDescription("任务 ⏫")
  * // 返回: "任务 ⏫"
  * ```
  */
@@ -335,29 +335,11 @@ export function parseDate(dateStr: string): Date | null {
  * ```ts
  * hasAnyDate({ dueDate: Date(...) })      // true
  * hasAnyDate({})                          // false
- * hasAnyDate({ priority: 'high' })        // false
+ * hasAnyDate({})        // false
  * ```
  */
 export function hasAnyDate(dates: ParsedDates): boolean {
     return Object.values(dates).some(date => date instanceof Date && !isNaN(date.getTime()));
-}
-
-/**
- * 检查任务是否有优先级
- *
- * @param priority - 优先级值
- * @returns 是否有有效优先级
- *
- * @example
- * ```ts
- * hasValidPriority('high')    // true
- * hasValidPriority('medium')  // true
- * hasValidPriority(undefined) // false
- * hasValidPriority('')        // false
- * ```
- */
-export function hasValidPriority(priority?: string): boolean {
-    return !!priority && ['highest', 'high', 'medium', 'low', 'lowest'].includes(priority);
 }
 
 // ==================== 类型导入 ====================

@@ -14,11 +14,6 @@ import type { GCTask } from '../types';
 export type TaskStatus = TaskStatusType;
 
 /**
- * 优先级类型（与现有系统兼容）
- */
-export type Priority = 'highest' | 'high' | 'medium' | 'normal' | 'low' | 'lowest';
-
-/**
  * 任务日期集合
  */
 export interface TaskDates {
@@ -26,12 +21,13 @@ export interface TaskDates {
 	start?: Date;
 	scheduled?: Date;
 	due?: Date;
-	completed?: Date;
-	cancelled?: Date;
 }
 
 /**
  * 数据源配置
+ *
+ * 2026-11-23：同步子系统（飞书 / CalDAV / API 数据源）已整体移除，
+ * 此处仅保留本地 Markdown 数据源所需的字段。
  */
 export interface DataSourceConfig {
 	enabled?: boolean;
@@ -41,44 +37,6 @@ export interface DataSourceConfig {
 	conflictResolution: 'local-win' | 'remote-win' | 'newest-win' | 'manual';
 	globalFilter?: string;
 	enabledFormats?: string[];
-	// API 配置（用于第三方同步）
-	api?: {
-		provider: 'feishu' | 'microsoft-todo' | 'custom';
-		apiKey?: string;
-		endpoint?: string;
-
-		// OAuth 配置
-		clientId?: string;           // App ID (用于 OAuth)
-		clientSecret?: string;       // App Secret (用于 OAuth)
-		redirectUri?: string;        // OAuth 回调地址
-
-		// Token
-		accessToken?: string;
-		refreshToken?: string;
-		tokenExpireAt?: number;      // token 过期时间戳
-
-		// 用户信息
-		userId?: string;
-		userName?: string;
-
-		// 旧字段保留兼容（飞书）
-		appId?: string;
-		appSecret?: string;
-		tenantId?: string;
-	};
-	// CalDAV 配置
-	caldav?: {
-		provider: 'google' | 'outlook' | 'apple' | 'custom';
-		url?: string;
-		username?: string;
-		password?: string;
-		clientId?: string;
-		clientSecret?: string;
-		redirectUri?: string;
-		accessToken?: string;
-		refreshToken?: string;
-		calendarPath?: string;
-	};
 }
 
 /**
@@ -122,7 +80,6 @@ export interface TaskChanges {
 	completed?: boolean;
 	cancelled?: boolean;
 	status?: TaskStatus;
-	priority?: string;
 	tags?: string[];
 	createdDate?: Date;
 	startDate?: Date;
@@ -138,7 +95,6 @@ export interface TaskChanges {
  */
 export interface QueryOptions {
 	status?: TaskStatus[];
-	priority?: Priority[];
 	tags?: string[];
 	dateRange?: {
 		start: Date;

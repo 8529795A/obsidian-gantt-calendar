@@ -1,4 +1,4 @@
-import { Plugin, Notice, Platform, setIcon } from 'obsidian';
+import { Plugin, Notice } from 'obsidian';
 import { GCMainView, GC_VIEW_ID } from './src/GCMainView';
 import { GCSidebarView, GC_SIDEBAR_VIEW_ID } from './src/GCSidebarView';
 import { GanttCalendarSettingTab } from './src/settings';
@@ -8,20 +8,24 @@ import { registerAllCommands } from './src/commands/commandsIndex';
 import { TooltipManager } from './src/utils/tooltipManager';
 import { Logger } from './src/utils/logger';
 import { setTimezoneOffset } from './src/dateUtils/timezone';
-import { i18n, initializeI18n, setLanguage, isChineseLanguage } from './src/i18n/i18n';
+import { initializeI18n, setLanguage, isChineseLanguage } from './src/i18n/i18n';
 import { refreshPresetStatusNames } from './src/tasks/taskStatus';
 
 import { SettingsManager } from './src/managers/SettingsManager';
 import { ThemeManager } from './src/managers/ThemeManager';
 import { ViewManager, activateSidebarView } from './src/managers/ViewManager';
-import { SyncManagerBridge } from './src/managers/SyncManagerBridge';
 import { DailyNoteIndex } from './src/utils/dailyNoteSettingsBridge';
 import { initModalHost, destroyModalHost } from './src/ui/modals/modalHost';
 import { useCalendarStore } from './src/ui/store/calendarStore';
-import { StatusBarPresenter } from './src/statusBar/statusBarPresenter';
 
 /** 视图筛选变更写回 data.json 的防抖间隔（点击级频率，无需即时时效） */
 const VIEW_FILTERS_SAVE_DEBOUNCE_MS = 800;
+
+/**
+ * 构建戳：每次构建由 esbuild 注入当前时间，用于确认运行中的插件版本。
+ * 右键菜单状态段改为动态生成后加入，便于排查"改了但没生效"。
+ */
+const BUILD_STAMP = '2026-11-22-canvas-tint-2day-wheel';
 
 export default class GanttCalendarPlugin extends Plugin {
 	settings: GanttCalendarSettings;
@@ -37,17 +41,12 @@ export default class GanttCalendarPlugin extends Plugin {
 	private settingsManager: SettingsManager;
 	private themeManager: ThemeManager;
 	private viewManager: ViewManager;
-	private syncManagerBridge: SyncManagerBridge;
-
-	// 状态栏：独立的图标和文字元素，互不覆盖
-	private statusBarItemEl: HTMLElement;
-	private statusBarIcon: HTMLElement;
-	private statusBarText: HTMLElement;
-	private statusBarPresenter: StatusBarPresenter | null = null;
-	private syncStatusText = '';
-	private lastSyncTime = '';
 
 	async onload() {
+		// 构建标识：用于确认 Obsidian 当前加载的是哪一版代码。
+		// 改动后若控制台仍显示旧标识，说明插件未被重新加载（需要重载应用）。
+		Logger.info('GanttCalendar', `onload build=${BUILD_STAMP} statusMenu=dynamic`);
+
 		await initializeI18n();
 
 		this.settingsManager = new SettingsManager(this);
@@ -95,9 +94,6 @@ export default class GanttCalendarPlugin extends Plugin {
 
 		this.addSettingTab(new GanttCalendarSettingTab(this.app, this));
 
-		this.syncManagerBridge = new SyncManagerBridge(this);
-		this.syncManagerBridge.initialize(this.settings.syncConfiguration);
-
 		// 全局 React Modal 宿主（设置面板等非 React 环境也需打开 React 模态框）
 		initModalHost();
 
@@ -123,8 +119,6 @@ export default class GanttCalendarPlugin extends Plugin {
 			this.viewFiltersSaveTimer = null;
 			void this.settingsManager.saveSettings(this.settings);
 		}
-		this.statusBarPresenter?.cancelScheduledUpdate();
-		this.syncManagerBridge?.destroy();
 		this.dailyNoteIndex?.destroy();
 		this.themeManager?.destroy();
 		this.taskCache?.clear();
@@ -144,9 +138,6 @@ export default class GanttCalendarPlugin extends Plugin {
 				this.settings.enabledTaskFormats
 			);
 		}
-		if (this.syncManagerBridge) {
-			await this.syncManagerBridge.updateConfiguration(this.settings.syncConfiguration);
-		}
 	}
 
 	async activateView(): Promise<void> {
@@ -155,7 +146,7 @@ export default class GanttCalendarPlugin extends Plugin {
 
 	/**
 	 * 视图筛选变更防抖写回 data.json（只走 SettingsManager.saveData 落盘，
-	 * 不经 saveSettings 的 taskCache/syncManager 重配置副作用）
+	 * 不经 saveSettings 的 taskCache 重配置副作用）
 	 */
 	private scheduleViewFiltersSave(): void {
 		if (this.viewFiltersSaveTimer !== null) {
@@ -171,61 +162,7 @@ export default class GanttCalendarPlugin extends Plugin {
 		this.viewManager.refreshAllViews();
 	}
 
-	// ===== 状态栏 =====
-
-	setSyncStatus(text: string): void {
-		this.syncStatusText = text;
-		if (text.includes('\u2705') || text.includes('\u274C')) {
-			this.lastSyncTime = new Date().toISOString();
-		}
-		Logger.info('StatusBar', 'setSyncStatus: ' + text);
-		this.renderStatusBar();
-	}
-
-	clearSyncStatus(): void {
-		this.syncStatusText = '';
-		this.renderStatusBar();
-	}
-
 	// ===== 私有方法 =====
-
-	private async loadLastSyncTime(): Promise<void> {
-		try {
-			const path = '.feishu-sync-state.json';
-			if (await this.app.vault.adapter.exists(path)) {
-				const raw = await this.app.vault.adapter.read(path);
-				const data = JSON.parse(raw) as Record<string, { lastSyncAt?: string }>;
-				const times = Object.values(data);
-				const latest = times
-					.map(r => r.lastSyncAt || '')
-					.filter(t => t)
-					.sort()
-					.pop();
-				if (latest) {
-					this.lastSyncTime = latest;
-				}
-			}
-		} catch {
-			// ignore
-		}
-		this.renderStatusBar();
-	}
-
-	private formatLastSync(): string {
-		const pad = (n: number) => String(n).padStart(2, '0');
-		if (!this.lastSyncTime) return `— ${i18n.t('common.notSynced')}`;
-		const d = new Date(this.lastSyncTime);
-		const now = new Date();
-		const hhmm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-		if (d.toDateString() === now.toDateString()) return i18n.t('common.syncedAt', { time: hhmm });
-
-		const yesterday = new Date(now);
-		yesterday.setDate(yesterday.getDate() - 1);
-		if (d.toDateString() === yesterday.toDateString()) return i18n.t('common.syncedYesterdayAt', { time: hhmm });
-
-		return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hhmm}`;
-	}
 
 	private scheduleTaskCacheInit(): void {
 		// onLayoutReady 即 vault/metadataCache 就绪信号，无需额外固定延迟。
@@ -244,7 +181,6 @@ export default class GanttCalendarPlugin extends Plugin {
 					// TaskStore.notifyListeners()（onUpdate）与视图 whenReady 订阅
 					// 承担；旧实现经 bumpSettings()++settingsVersion 触发
 					// AnimatePresence 整视图卸载重挂，数据刚填充即闪烁重排。
-					await this.loadLastSyncTime();
 				}).catch(error => {
 					Logger.error('Main', 'Failed to initialize task cache:', error);
 					new Notice('任务缓存初始化失败');
@@ -258,29 +194,5 @@ export default class GanttCalendarPlugin extends Plugin {
 			void this.activateView();
 		});
 		ribbonIconEl.addClass('gantt-calendar-ribbon');
-
-		// 状态栏：图标和文字用独立子元素，更新时互不干扰。
-		// 移动端无可见状态栏，不注册（同步状态经 Notice 与视图内呈现）
-		if (Platform.isMobile) return;
-
-		this.statusBarItemEl = this.addStatusBarItem();
-		this.statusBarIcon = this.statusBarItemEl.createSpan({ cls: 'gc-status-bar-icon' });
-		setIcon(this.statusBarIcon, 'goal');
-		this.statusBarText = this.statusBarItemEl.createSpan();
-		this.statusBarText.setText('...');
-
-		if (this.taskCache) {
-			this.statusBarPresenter = new StatusBarPresenter(
-				this.statusBarText,
-				() => this.taskCache.getAllTasks(),
-				() => ({ lastSync: this.formatLastSync(), syncStatus: this.syncStatusText || i18n.t('common.ready') }),
-			);
-			this.taskCache.onUpdate(() => this.statusBarPresenter?.scheduleUpdate());
-			this.statusBarPresenter.renderNow();
-		}
-	}
-
-	private renderStatusBar(): void {
-		this.statusBarPresenter?.renderNow();
 	}
 }

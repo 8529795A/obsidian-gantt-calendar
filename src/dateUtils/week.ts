@@ -52,6 +52,44 @@ export function isThisWeek(date: Date, startOnMonday: boolean = true): boolean {
 }
 
 /**
+ * 从任意起点构建连续 7 天窗口（**不吸附到周首日**）。
+ *
+ * 与 getWeekOfDate 的区别：后者总是把 date 吸附到 startOfWeek，导致
+ * 「currentDate + 2 天」在未跨周边界时仍显示同一周（位移被 startOfWeek 抹平）。
+ * 周视图的滚动窗口（每次 ±2 天）必须用本函数，才能让窗口起点落在任意一天。
+ *
+ * weekNumber 取窗口起点所在周的周号，仅作参考——滚动窗口可能横跨两周，
+ * 调用方应优先展示日期区间而非周号。
+ */
+export function getWeekFromStart(startDate: Date, startOnMonday: boolean = true): CalendarWeek {
+	const base = new Date(startDate);
+	base.setHours(0, 0, 0, 0);
+
+	const days: CalendarDay[] = [];
+	for (let i = 0; i < 7; i++) {
+		const currentDate = new Date(base);
+		currentDate.setDate(base.getDate() + i);
+		const lunarInfo = solarToLunar(currentDate);
+		days.push({
+			date: currentDate,
+			day: currentDate.getDate(),
+			isCurrentMonth: true,
+			isToday: isToday(currentDate),
+			weekday: currentDate.getDay(),
+			lunarText: getShortLunarText(currentDate),
+			festival: lunarInfo.festival,
+		});
+	}
+
+	return {
+		weekNumber: getWeekNumber(base, base.getFullYear(), startOnMonday),
+		days,
+		startDate: base,
+		endDate: new Date(base.getTime() + 6 * 24 * 60 * 60 * 1000),
+	};
+}
+
+/**
  * Get week data for a specific date
  */
 export function getWeekOfDate(date: Date, baseYear?: number, startOnMonday: boolean = true): CalendarWeek {

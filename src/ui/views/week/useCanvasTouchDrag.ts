@@ -13,12 +13,28 @@ import { setCssProps } from '../../../utils/bem';
  * - 仅接管 pointerType === 'touch'，桌面鼠标路径零影响
  */
 export interface CanvasTouchDragDeps {
-	/** 落点提交：task + 目标日索引 + 块上边缘吸附分钟 */
-	onCommit: (task: GCTask, dayIndex: number, topEdgeMin: number) => void;
-	/** 落点预览（各画布的 dropPreview 状态） */
+	/**
+	 * 落点提交：task + 目标日索引 + 块上边缘吸附分钟。
+	 * topEdgeMin 为 null 表示「保留原时刻，只改日期」（列表式布局无时间轴时使用）。
+	 */
+	onCommit: (task: GCTask, dayIndex: number, topEdgeMin: number | null) => void;
+	/** 落点预览（各画布的 dropPreview 状态）；列表式布局可传 null 关闭预览 */
 	setPreview: (p: { dayIndex: number; startMin: number; endMin: number } | null) => void;
-	/** 落点列的容器选择器（含 data-day-idx 属性） */
+	/**
+	 * 落点列的容器选择器（含 data-day-idx 属性）
+	 */
 	columnSelector: string;
+	/**
+	 * 小时窗口起点（分钟）。日视图左右分栏时，落点列 rect.top 是本窗口顶部，
+	 * 换算绝对分钟必须加回该偏移，否则右轴（12-24）拖动会被算成左轴时刻。
+	 * 缺省 0（整天画布）。
+	 */
+	windowStartMin?: number;
+	/**
+	 * 是否按像素位置推算落点时刻。默认 true（时间轴画布）。
+	 * false：列表式布局，落点只决定日期，时刻沿用任务原值。
+	 */
+	resolveMinutesFromPointer?: boolean;
 }
 
 interface PressState {
@@ -81,8 +97,15 @@ export function useCanvasTouchDrag(deps: CanvasTouchDragDeps) {
 		}
 		const dayIndex = Number(hit.dataset.dayIdx);
 		if (Number.isNaN(dayIndex)) { p.landing = null; return; }
+		if (depsRef.current.resolveMinutesFromPointer === false) {
+			// 列表式布局：落点只决定日期，不推算时刻，也不显示时间预览块
+			p.landing = { dayIndex, topMin: 0 };
+			depsRef.current.setPreview(null);
+			return;
+		}
 		const rect = hit.getBoundingClientRect();
-		const topMin = snapMinutes(pxToMinutes(ev.clientY - p.offsetPx - rect.top), false);
+		const winStart = depsRef.current.windowStartMin ?? 0;
+		const topMin = snapMinutes(pxToMinutes(ev.clientY - p.offsetPx - rect.top) + winStart, false);
 		p.landing = { dayIndex, topMin };
 		depsRef.current.setPreview({ dayIndex, startMin: topMin, endMin: Math.min(topMin + p.durationMin, 24 * 60) });
 	}, [cleanup]);
@@ -92,7 +115,8 @@ export function useCanvasTouchDrag(deps: CanvasTouchDragDeps) {
 		cleanup();
 		if (!p) return;
 		if (p.dragging && p.moved && p.landing) {
-			depsRef.current.onCommit(p.task, p.landing.dayIndex, p.landing.topMin);
+			const listMode = depsRef.current.resolveMinutesFromPointer === false;
+			depsRef.current.onCommit(p.task, p.landing.dayIndex, listMode ? null : p.landing.topMin);
 			return;
 		}
 		if (p.dragging && !p.moved) {

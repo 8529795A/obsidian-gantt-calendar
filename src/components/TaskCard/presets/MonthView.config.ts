@@ -9,10 +9,8 @@ export const MonthViewConfig: TaskCardConfig = {
 	viewModifier: 'month',
 
 	// 元素显示控制
-	showCheckbox: true,
 	showDescription: true,
 	showTags: true,
-	showPriority: false,        // 月视图空间有限，不显示优先级
 	showFileLocation: false,
 	showWarning: false,         // 月视图不显示警告
 	showTicktick: true,

@@ -25,6 +25,12 @@ export interface ViewFilterState {
 interface CalendarStoreState {
 	viewType: CalendarViewType;
 	currentDate: Date;
+	/**
+	 * 周视图 7 天滚动窗口的起点（可为任意一天，不吸附到周首日）。
+	 * null = 未滚动过，按 currentDate 所在周对齐（周一/周日为起点）。
+	 * 工具栏左右箭头每次 ±2 天时写入此字段；切到别的日期时清空回到对齐态。
+	 */
+	weekWindowStart: Date | null;
 	tasks: GCTask[];
 	/** 首扫是否已推入任务（whenReady 或事件回流任一路径）；false 时视图渲染骨架 */
 	tasksReady: boolean;
@@ -41,6 +47,16 @@ interface CalendarStoreState {
 
 	setViewType: (type: CalendarViewType) => void;
 	setCurrentDate: (date: Date) => void;
+	/** 设置周视图 7 天滚动窗口起点（null 表示回到按周对齐） */
+	setWeekWindowStart: (start: Date | null) => void;
+	/**
+	 * 原子地同时设置 currentDate 与周视图窗口起点。
+	 *
+	 * 必须用这个而不是先 setWeekWindowStart 再 setCurrentDate：
+	 * 后者会把刚设好的 weekWindowStart 重置为 null（setCurrentDate 语义是
+	 * "跳到某日期，回到标准周对齐"），导致周视图箭头点了不动。
+	 */
+	setWeekWindow: (start: Date, anchor: Date) => void;
 	/** 数据层 TaskStore 通知时调用（防抖已由 TaskStore 处理） */
 	notifyTasksUpdated: (tasks: GCTask[], filePath?: string) => void;
 	setTasks: (tasks: GCTask[]) => void;
@@ -128,6 +144,7 @@ export function pruneTagFilters(
 export const useCalendarStore = create<CalendarStoreState>((set) => ({
 	viewType: 'year',
 	currentDate: new Date(),
+	weekWindowStart: null,
 	tasks: [],
 	tasksReady: false,
 	changedFilePath: undefined,
@@ -137,7 +154,10 @@ export const useCalendarStore = create<CalendarStoreState>((set) => ({
 	ganttScroll: null,
 
 	setViewType: (type) => set({ viewType: type }),
-	setCurrentDate: (date) => set({ currentDate: new Date(date) }),
+	setCurrentDate: (date) => set({ currentDate: new Date(date), weekWindowStart: null }),
+	setWeekWindowStart: (start) => set({ weekWindowStart: start ? new Date(start) : null }),
+	setWeekWindow: (start, anchor) =>
+		set({ weekWindowStart: new Date(start), currentDate: new Date(anchor) }),
 	notifyTasksUpdated: (tasks, filePath) =>
 		set((s) => {
 			// 同一次 TaskStore 防抖冲刷会被主视图和侧栏两个订阅者各转发一次，

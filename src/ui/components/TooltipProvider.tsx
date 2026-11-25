@@ -14,10 +14,12 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import type { GCTask } from '../../types';
 import { TooltipClasses } from '../../utils/bem';
+import { i18n } from '../../i18n/i18n';
 import { TagPillSpan } from './TagPillSpan';
 import { MOTION, tooltipVariants, easeOutTransition } from '../motion';
 import {
 	buildTooltipSections,
+	buildTooltipDetails,
 	type TooltipSection,
 } from '../../components/tooltip/tooltipSections';
 import { computeTooltipPosition } from '../../components/tooltip/tooltipPosition';
@@ -136,6 +138,7 @@ function TooltipContent({ state, onClose }: { state: TooltipState; onClose: () =
 	}, [state, anchor, mouse]);
 
 	const sections = useMemo(() => buildTooltipSections(task), [task]);
+	const details = useMemo(() => buildTooltipDetails(task), [task]);
 
 	return createPortal(
 		<motion.div
@@ -151,6 +154,18 @@ function TooltipContent({ state, onClose }: { state: TooltipState; onClose: () =
 			<div className={TooltipClasses.elements.description}>
 				<strong>{task.description || ''}</strong>
 			</div>
+			{details ? (
+				<div className={TooltipClasses.elements.details}>
+					{details.lines.map((line, i) => (
+						<div key={i} className={TooltipClasses.elements.detailsLine}>{line}</div>
+					))}
+					{details.hiddenCount > 0 ? (
+						<div className={TooltipClasses.elements.detailsMore}>
+							{i18n.t('taskCard.detailsMore', { count: details.hiddenCount })}
+						</div>
+					) : null}
+				</div>
+			) : null}
 			<div className={TooltipClasses.elements.properties}>
 				{sections.map((section: TooltipSection, idx: number) => (
 					<div key={section.key}>

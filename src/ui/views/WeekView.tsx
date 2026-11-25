@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
-import { getWeekOfDate } from '../../dateUtils/dateUtilsIndex';
+import { getWeekOfDate, getWeekFromStart } from '../../dateUtils/dateUtilsIndex';
 import { WeekViewConfig } from '../../components/TaskCard';
 import { WeekViewClasses } from '../../utils/bem';
 import { usePlugin } from '../pluginContext';
@@ -19,7 +19,8 @@ import { useIsPhone } from '../utils/platform';
 export function WeekView(): JSX.Element {
 	const plugin = usePlugin();
 	const currentDate = useCalendarStore((s) => s.currentDate);
-	const setCurrentDate = useCalendarStore((s) => s.setCurrentDate);
+	const weekWindowStart = useCalendarStore((s) => s.weekWindowStart);
+	const setWeekWindow = useCalendarStore((s) => s.setWeekWindow);
 	const tasks = useCalendarStore((s) => s.tasks);
 	const filter = useCalendarStore((s) => selectViewFilter(s, 'week'));
 	const updateSeq = useCalendarStore((s) => s.updateSeq);
@@ -34,17 +35,18 @@ export function WeekView(): JSX.Element {
 	const config = useMemo(() => ({
 		...WeekViewConfig,
 		enableDrag: true,
-		showCheckbox: plugin.settings.weekViewShowCheckbox,
 		showTags: plugin.settings.weekViewShowTags,
-		showPriority: plugin.settings.weekViewShowPriority,
 		showTicktick: plugin.settings.weekViewShowTicktick,
 	}), [plugin.settings]);
 	// 时间块使用紧凑变体，高度由块容器按时长撑开
 	const timelineConfig = useMemo(() => ({ ...config, variant: 'timeline' as const }), [config]);
 
-	const weekData = useMemo(() => (
-		getWeekOfDate(currentDate, currentDate.getFullYear(), startOnMonday)
-	), [currentDate, startOnMonday]);
+	const weekData = useMemo(() => {
+		// 有滚动窗口起点时按它铺 7 天（起点可为任意一天，不吸附周首日）；
+		// 否则按 currentDate 所在周对齐——保证首次进入仍是标准周一/周日为起点
+		if (weekWindowStart) return getWeekFromStart(weekWindowStart, startOnMonday);
+		return getWeekOfDate(currentDate, currentDate.getFullYear(), startOnMonday);
+	}, [currentDate, startOnMonday, weekWindowStart]);
 
 	const weekStart = useMemo(() => {
 		const d = new Date(weekData.days[0].date);
@@ -99,25 +101,33 @@ export function WeekView(): JSX.Element {
 		[windowStart, visibleCount],
 	);
 
-	/** swipe 翻页：窗口内滑动一日，越界滚动到相邻周 */
+	/** swipe 翻页：窗口内滑动一日；越界时整体滚动 1 天（滚动窗口语义，不再整周 ±7） */
 	const handleSwipe = useCallback((dir: -1 | 1) => {
 		const next = windowStart + dir;
 		if (next < 0) {
 			const d = new Date(weekStart);
-			d.setDate(d.getDate() - 7);
-			setCurrentDate(d);
-			setWindowStart(7 - visibleCount);
+			d.setDate(d.getDate() - 1);
+			d.setHours(0, 0, 0, 0);
+			// 原子写入窗口起点 + currentDate（后者落到窗口第 2 天），
+			// 否则 currentDate 滞留原地，下次点箭头基准不连续
+			const anchor = new Date(d);
+			anchor.setDate(anchor.getDate() + 1);
+			setWeekWindow(d, anchor);
+			setWindowStart(0);
 			return;
 		}
 		if (next + visibleCount > 7) {
 			const d = new Date(weekStart);
-			d.setDate(d.getDate() + 7);
-			setCurrentDate(d);
-			setWindowStart(0);
+			d.setDate(d.getDate() + 1);
+			d.setHours(0, 0, 0, 0);
+			const anchor = new Date(d);
+			anchor.setDate(anchor.getDate() + 1);
+			setWeekWindow(d, anchor);
+			setWindowStart(7 - visibleCount);
 			return;
 		}
 		setWindowStart(next);
-	}, [windowStart, visibleCount, weekStart, setCurrentDate]);
+	}, [windowStart, visibleCount, weekStart, setWeekWindow]);
 
 	return (
 		<div className="gc-view gc-view--week">

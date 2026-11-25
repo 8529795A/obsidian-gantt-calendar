@@ -10,8 +10,7 @@
  * bem(BLOCKS.TASK_CARD) → 'gc-task-card'
  * bem(BLOCKS.TASK_CARD, 'text') → 'gc-task-card__text'
  * bem(BLOCKS.TASK_CARD, undefined, 'month') → 'gc-task-card--month'
- * bem(BLOCKS.TASK_CARD, 'priority', 'high') → 'gc-task-card__priority--high'
- */
+ * bem(BLOCKS.TASK_CARD, 'tags-overflow') → 'gc-task-card__tags-overflow'\r?\n */
 
 /**
  * BEM Block 常量定义
@@ -131,8 +130,7 @@ export const TaskCardClasses = {
 		checkbox: bem(BLOCKS.TASK_CARD, 'checkbox'),
 		text: bem(BLOCKS.TASK_CARD, 'text'),
 		tags: bem(BLOCKS.TASK_CARD, 'tags'),
-		priority: bem(BLOCKS.TASK_CARD, 'priority'),
-		priorityBadge: bem(BLOCKS.TASK_CARD, 'priority-badge'),
+		tagsOverflow: bem(BLOCKS.TASK_CARD, 'tags-overflow'),
 		times: bem(BLOCKS.TASK_CARD, 'times'),
 		timeBadge: bem(BLOCKS.TASK_CARD, 'time-badge'),
 		file: bem(BLOCKS.TASK_CARD, 'file'),
@@ -179,17 +177,6 @@ export const TimeBadgeClasses = {
 	overdue: bem(BLOCKS.TASK_CARD, 'time-badge', 'overdue'),
 };
 
-/**
- * 优先级类名常量
- */
-export const PriorityClasses = {
-	highest: bem(BLOCKS.TASK_CARD, 'priority-badge', 'highest'),
-	high: bem(BLOCKS.TASK_CARD, 'priority-badge', 'high'),
-	medium: bem(BLOCKS.TASK_CARD, 'priority-badge', 'medium'),
-	low: bem(BLOCKS.TASK_CARD, 'priority-badge', 'low'),
-	lowest: bem(BLOCKS.TASK_CARD, 'priority-badge', 'lowest'),
-};
-
 
 
 /**
@@ -200,6 +187,10 @@ export const TooltipClasses = {
 
 	elements: {
 		description: bem(BLOCKS.TASK_TOOLTIP, 'description'),
+		/** 任务详情（标题下方的多行摘要） */
+		details: bem(BLOCKS.TASK_TOOLTIP, 'details'),
+		detailsLine: bem(BLOCKS.TASK_TOOLTIP, 'details-line'),
+		detailsMore: bem(BLOCKS.TASK_TOOLTIP, 'details-more'),
 		properties: bem(BLOCKS.TASK_TOOLTIP, 'properties'),
 		propertySection: bem(BLOCKS.TASK_TOOLTIP, 'property-section'),
 		propertyRow: bem(BLOCKS.TASK_TOOLTIP, 'property-row'),
@@ -257,6 +248,9 @@ export const ContextMenuClasses = {
 	itemDisabled: bem(BLOCKS.CONTEXT_MENU, 'item', 'disabled'),
 	itemIcon: bem(BLOCKS.CONTEXT_MENU, 'item-icon'),
 	itemLabel: bem(BLOCKS.CONTEXT_MENU, 'item-label'),
+	itemCheck: bem(BLOCKS.CONTEXT_MENU, 'item-check'),
+	sectionTitle: bem(BLOCKS.CONTEXT_MENU, 'section-title'),
+	statusDot: bem(BLOCKS.CONTEXT_MENU, 'status-dot'),
 	// 手机端底部操作面板
 	sheet: bem(BLOCKS.CONTEXT_MENU, 'sheet'),
 	sheetOverlay: bem(BLOCKS.CONTEXT_MENU, 'sheet-overlay'),
@@ -341,6 +335,10 @@ export const DayViewClasses = {
 			alldayTasks: bem(BLOCKS.DAY_VIEW, 'allday-tasks'),
 			alldayItem: bem(BLOCKS.DAY_VIEW, 'allday-item'),
 			alldayTime: bem(BLOCKS.DAY_VIEW, 'allday-time'),
+			// 左右双时间窗（左 0-12 / 右 12-24）
+			splitCanvas: bem(BLOCKS.DAY_VIEW, 'split-canvas'),
+			canvasPane: bem(BLOCKS.DAY_VIEW, 'canvas-pane'),
+			canvasDivider: bem(BLOCKS.DAY_VIEW, 'canvas-divider'),
 	},
 };
 
@@ -661,11 +659,21 @@ export const EditTaskModalClasses = {
 		descContainer: bem(BLOCKS.EDIT_TASK_MODAL, 'desc-container'),
 		descTextarea: bem(BLOCKS.EDIT_TASK_MODAL, 'desc-textarea'),
 
+		// 任务详情板块
+		detailsContainer: bem(BLOCKS.EDIT_TASK_MODAL, 'details-container'),
+		detailsTextarea: bem(BLOCKS.EDIT_TASK_MODAL, 'details-textarea'),
+		detailsHint: bem(BLOCKS.EDIT_TASK_MODAL, 'details-hint'),
+
 		// 优先级板块
-		priorityContainer: bem(BLOCKS.EDIT_TASK_MODAL, 'priority-container'),
-		priorityGrid: bem(BLOCKS.EDIT_TASK_MODAL, 'priority-grid'),
-		priorityBtn: bem(BLOCKS.EDIT_TASK_MODAL, 'priority-btn'),
-		priorityBtnSelected: bem(BLOCKS.EDIT_TASK_MODAL, 'priority-btn', 'selected'),
+
+		// 任务状态板块
+		statusContainer: bem(BLOCKS.EDIT_TASK_MODAL, 'status-container'),
+		statusGrid: bem(BLOCKS.EDIT_TASK_MODAL, 'status-grid'),
+		statusBtn: bem(BLOCKS.EDIT_TASK_MODAL, 'status-btn'),
+		statusBtnSelected: bem(BLOCKS.EDIT_TASK_MODAL, 'status-btn', 'selected'),
+		statusSwatch: bem(BLOCKS.EDIT_TASK_MODAL, 'status-swatch'),
+		statusBtnLabel: bem(BLOCKS.EDIT_TASK_MODAL, 'status-btn-label'),
+		statusBtnCheck: bem(BLOCKS.EDIT_TASK_MODAL, 'status-btn-check'),
 
 		// 日期设置板块
 		datesContainer: bem(BLOCKS.EDIT_TASK_MODAL, 'dates-container'),
@@ -778,6 +786,11 @@ export const MonthViewClasses = {
 		dayHeaderSeparator: bem(BLOCKS.MONTH_VIEW, 'day-header-separator'),
 		dayNumber: bem(BLOCKS.MONTH_VIEW, 'day-number'),
 		lunarText: bem(BLOCKS.MONTH_VIEW, 'lunar-text'),
+		// 日头右侧任务计数徽标（蓝底黑字小圆，0 个任务时不渲染）
+		taskCount: bem(BLOCKS.MONTH_VIEW, 'task-count'),
+		// 非当月格：只读细滚动条（轨道 + 滑块，滑块不可拖拽）
+		scrollTrack: bem(BLOCKS.MONTH_VIEW, 'scroll-track'),
+		scrollThumb: bem(BLOCKS.MONTH_VIEW, 'scroll-thumb'),
 		tasks: bem(BLOCKS.MONTH_VIEW, 'tasks'),
 		taskItem: bem(BLOCKS.MONTH_VIEW, 'task-item'),
 		taskMore: bem(BLOCKS.MONTH_VIEW, 'task-more'),
@@ -790,6 +803,8 @@ export const MonthViewClasses = {
 	/** Modifiers */
 	modifiers: {
 		outsideMonth: bem(BLOCKS.MONTH_VIEW, 'day-cell', 'outside-month'),
+		// 非当月格任务列表：可滚动（隐藏原生滚动条，改用只读细条）
+		tasksScrollable: bem(BLOCKS.MONTH_VIEW, 'tasks', 'scrollable'),
 		today: bem(BLOCKS.MONTH_VIEW, 'day-cell', 'today'),
 		festival: bem(BLOCKS.MONTH_VIEW, 'lunar-text', 'festival'),
 		festivalSolar: bem(BLOCKS.MONTH_VIEW, 'lunar-text', 'festival-solar'),
@@ -835,7 +850,6 @@ export const WeekViewClasses = {
 		dropPreview: bem(BLOCKS.WEEK_VIEW, 'drop-preview'),
 		resizeTip: bem(BLOCKS.WEEK_VIEW, 'resize-tip'),
 		// 全天行
-		alldayGutter: bem(BLOCKS.WEEK_VIEW, 'allday-gutter'),
 		alldayRow: bem(BLOCKS.WEEK_VIEW, 'allday-row'),
 		alldayCell: bem(BLOCKS.WEEK_VIEW, 'allday-cell'),
 		alldayBar: bem(BLOCKS.WEEK_VIEW, 'allday-bar'),
@@ -852,6 +866,8 @@ export const WeekViewClasses = {
 		timeBlockContinuesBefore: bem(BLOCKS.WEEK_VIEW, 'time-block', 'continues-before'),
 		timeBlockContinuesAfter: bem(BLOCKS.WEEK_VIEW, 'time-block', 'continues-after'),
 		timeBlockStacked: bem(BLOCKS.WEEK_VIEW, 'time-block', 'stacked'),
+		// 列表式堆叠布局：块不再绝对定位，高度由内容自适应
+		timeBlockFlow: bem(BLOCKS.WEEK_VIEW, 'time-block', 'flow'),
 		handleTop: bem(BLOCKS.WEEK_VIEW, 'handle', 'top'),
 		handleBottom: bem(BLOCKS.WEEK_VIEW, 'handle', 'bottom'),
 		ghostDragging: bem(BLOCKS.WEEK_VIEW, 'ghost', 'dragging'),
@@ -887,6 +903,8 @@ export const DayCanvasClasses = {
 		dropLine: bem(BLOCKS.DAY_CANVAS, 'drop-line'),
 		dropPreview: bem(BLOCKS.DAY_CANVAS, 'drop-preview'),
 		currentTime: bem(BLOCKS.DAY_CANVAS, 'current-time'),
+		/** 画布下方灰字说明（跨分栏块的编辑提示） */
+		hint: bem(BLOCKS.DAY_CANVAS, 'hint'),
 	},
 
 	/** Modifiers */

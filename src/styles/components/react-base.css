@@ -252,6 +252,37 @@ button.gc-context-menu__item--disabled {
     white-space: nowrap;
 }
 
+/* 选中态对勾（当前任务状态） */
+.gc-context-menu__item-check {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: 8px;
+    color: var(--interactive-accent);
+}
+
+/* 段标题：区分并列分组（优先级 / 任务状态），纯展示不可点击 */
+.gc-context-menu__section-title {
+    padding: 4px 12px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text-faint);
+    user-select: none;
+}
+
+/* 状态色圆点：与卡片上的状态配色一致，便于按颜色识别 */
+.gc-context-menu__status-dot {
+    display: inline-block;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    margin-right: 8px;
+    border-radius: 50%;
+    border: 1px solid var(--background-modifier-border);
+    vertical-align: middle;
+}
+
 /* --- 工具提示内联包裹 (TooltipTrigger) --- */
 .gc-u-inline {
     display: inline;

@@ -66,10 +66,8 @@ export {
     isIncomplete,
     isCompleted,
     isCancelled,
-    parseTasksPriority,
     parseTasksDates,
     parseTasksAttributes,
-    parseDataviewPriority,
     parseDataviewDates,
     parseDataviewAttributes,
     parseTaskAttributes,
@@ -91,5 +89,4 @@ export {
     formatDate,
     parseDate,
     hasAnyDate,
-    hasValidPriority,
 } from './utils';

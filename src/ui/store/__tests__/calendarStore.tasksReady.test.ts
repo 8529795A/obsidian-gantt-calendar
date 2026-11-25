@@ -13,8 +13,6 @@ function makeTask(id: number): GCTask {
 		lineNumber: id,
 		content: `- [ ] task ${id}`,
 		description: `task ${id}`,
-		completed: false,
-		priority: 'normal',
 	};
 }
 

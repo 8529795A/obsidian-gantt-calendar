@@ -15,7 +15,6 @@ import { EventBus } from './EventBus';
 import type { GCTask } from '../types';
 import {
 	DataSourceChanges,
-	Priority,
 	QueryOptions
 } from './types';
 import { IDataSource } from './IDataSource';
@@ -55,7 +54,19 @@ export class TaskRepository {
 	 * @returns 任务列表
 	 */
 	getAllTasks(options?: QueryOptions): GCTask[] {
-		const tasks = Array.from(this.taskCache.values());
+		// 按任务「真实身份」（filePath:lineNumber）去重。
+		// 背景：行号漂移重配时曾以历史缓存键作为仓库键，导致同一任务
+		// 以多个键并存（各键的值指向同一行）。若不去重，视图会把同一条任务
+		// 渲染成多个重叠块（日/周视图表现为并排重复卡）。一行只会对应一条任务，
+		// 因此按值的 filePath:lineNumber 归并是安全的；同身份优先保留「键=身份」的规范条目。
+		const byIdentity = new Map<string, GCTask>();
+		for (const [key, task] of this.taskCache) {
+			const identity = generateTaskId(task);
+			if (!byIdentity.has(identity) || key === identity) {
+				byIdentity.set(identity, task);
+			}
+		}
+		const tasks = Array.from(byIdentity.values());
 		return this.filterTasks(tasks, options);
 	}
 
@@ -120,10 +131,6 @@ export class TaskRepository {
 			filtered = filtered.filter(t => options.status!.includes(t.status as string));
 		}
 
-		if (options.priority?.length) {
-			filtered = filtered.filter(t => options.priority!.includes(t.priority as Priority));
-		}
-
 		if (options.tags?.length) {
 			filtered = filtered.filter(t =>
 				options.tags!.some(tag => t.tags?.includes(tag))
@@ -136,8 +143,6 @@ export class TaskRepository {
 				start: 'startDate',
 				scheduled: 'scheduledDate',
 				due: 'dueDate',
-				completed: 'completionDate',
-				cancelled: 'cancelledDate'
 			};
 			const gcField = fieldMap[options.dateRange.field];
 
@@ -152,6 +157,30 @@ export class TaskRepository {
 		}
 
 		return filtered;
+	}
+
+	/**
+	 * 将任务 ID 加入文件索引
+	 */
+	private indexAdd(filePath: string | undefined, taskId: string): void {
+		if (!filePath) return;
+		if (!this.fileIndex.has(filePath)) {
+			this.fileIndex.set(filePath, new Set());
+		}
+		this.fileIndex.get(filePath)!.add(taskId);
+	}
+
+	/**
+	 * 从文件索引移除任务 ID（集合清空时删除该文件索引）
+	 */
+	private indexRemove(filePath: string | undefined, taskId: string): void {
+		if (!filePath) return;
+		const taskIds = this.fileIndex.get(filePath);
+		if (!taskIds) return;
+		taskIds.delete(taskId);
+		if (taskIds.size === 0) {
+			this.fileIndex.delete(filePath);
+		}
 	}
 
 	/**
@@ -179,12 +208,7 @@ export class TaskRepository {
 			this.taskCache.set(taskId, task);
 
 			// 更新文件索引
-			if (task.filePath) {
-				if (!this.fileIndex.has(task.filePath)) {
-					this.fileIndex.set(task.filePath, new Set());
-				}
-				this.fileIndex.get(task.filePath)!.add(taskId);
-			}
+			this.indexAdd(task.filePath, taskId);
 
 			// 首扫只维护缓存，等批量加载完成后统一通知，避免大库产生任务数级别的定时器 churn
 			if (!isInitialLoad) {
@@ -199,7 +223,20 @@ export class TaskRepository {
 			// 优先使用完整的新任务对象（如果提供）
 			if (newTask) {
 				updatedTask = newTask;
-				this.taskCache.set(id, newTask);
+				// 规范键归一：数据源在「行号漂移重配」时会用历史缓存键 id 回传更新，
+				// 而新任务的真实身份是 generateTaskId(newTask)。若两者不一致，直接把条目
+				// 迁移到规范键（删除旧键 + 写入规范键），避免同一任务在仓库里以多个键累积
+				// （否则每次行号漂移就新增一条，视图出现重复块）。
+				const canonicalId = generateTaskId(newTask);
+				if (canonicalId !== id) {
+					const oldFilePath = id.slice(0, id.lastIndexOf(':'));
+					this.taskCache.delete(id);
+					this.indexRemove(oldFilePath, id);
+					this.taskCache.set(canonicalId, newTask);
+					this.indexAdd(newTask.filePath, canonicalId);
+				} else {
+					this.taskCache.set(id, newTask);
+				}
 			} else {
 				// 否则使用增量更新
 				const task = this.taskCache.get(id);
@@ -219,17 +256,7 @@ export class TaskRepository {
 		for (const task of changes.deleted) {
 			const taskId = generateTaskId(task);
 			this.taskCache.delete(taskId);
-
-			// 更新文件索引
-			if (task.filePath) {
-				const taskIds = this.fileIndex.get(task.filePath);
-				if (taskIds) {
-					taskIds.delete(taskId);
-					if (taskIds.size === 0) {
-						this.fileIndex.delete(task.filePath);
-					}
-				}
-			}
+			this.indexRemove(task.filePath, taskId);
 
 			// 发布事件
 			this.eventBus.emit('task:deleted', { taskId });

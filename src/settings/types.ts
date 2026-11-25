@@ -1,13 +1,12 @@
 import type GanttCalendarPlugin from '../../main';
 import type { SortField, SortOrder, TagFilterOperator } from '../types';
 import type { TaskStatus } from '../tasks/taskStatus';
-import type { FeishuTaskList } from '../data-layer/sources/api/providers/feishu/FeishuTypes';
 import type { ViewFilterState, ViewScope } from '../ui/store/calendarStore';
 
 /**
  * 日期字段类型
  */
-export type DateFieldType = 'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate' | 'completionDate' | 'cancelledDate';
+export type DateFieldType = 'createdDate' | 'startDate' | 'scheduledDate' | 'dueDate';
 
 /**
  * Gantt Calendar Plugin Settings Interface
@@ -41,7 +40,6 @@ export interface GanttCalendarSettings {
 	defaultView: 'day' | 'week' | 'month' | 'year' | 'task' | 'gantt'; // 默认视图
 	newTaskHeading?: string; // 新任务插入的标题（留空则添加到文件末尾）
 	dailyNoteTemplatePath: string;
-	defaultTaskPriority: 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal'; // 默认任务优先级
 	enableDebugMode: boolean; // 是否启用开发者模式（详细日志）
 	showViewNavButtonText: boolean; // 是否显示视图导航按钮文本
 	taskCardClickAction: 'openFile' | 'editModal'; // 点击任务卡片行为：跳转 Markdown 源文件 / 弹出编辑面板
@@ -61,9 +59,7 @@ export interface GanttCalendarSettings {
 	taskViewTimeFieldFilter: DateFieldType;
 	taskViewDateRangeMode: 'all' | 'day' | 'week' | 'month' | 'custom';
 	// TaskView 卡片显示控制
-	taskViewShowCheckbox: boolean;
 	taskViewShowTags: boolean;
-	taskViewShowPriority: boolean;
 	taskViewShowTicktick: boolean;
 
 	// DayView 状态
@@ -73,9 +69,7 @@ export interface GanttCalendarSettings {
 	dayViewSelectedTags: string[];
 	dayViewTagOperator: TagFilterOperator;
 	// DayView 卡片显示控制（与其他时间线视图对齐）
-	dayViewShowCheckbox: boolean;
 	dayViewShowTags: boolean;
-	dayViewShowPriority: boolean;
 	dayViewShowTicktick: boolean;
 
 	// WeekView 状态
@@ -85,9 +79,7 @@ export interface GanttCalendarSettings {
 	weekViewSelectedTags: string[];
 	weekViewTagOperator: TagFilterOperator;
 	// WeekView 卡片显示控制
-	weekViewShowCheckbox: boolean;
 	weekViewShowTags: boolean;
-	weekViewShowPriority: boolean;
 		weekViewShowTicktick: boolean;
 
 	// MonthView 状态
@@ -97,9 +89,7 @@ export interface GanttCalendarSettings {
 	monthViewSelectedTags: string[];
 	monthViewTagOperator: TagFilterOperator;
 	// MonthView 卡片显示控制
-	monthViewShowCheckbox: boolean;
 	monthViewShowTags: boolean;
-	monthViewShowPriority: boolean;
 		monthViewShowTicktick: boolean;
 
 	// YearView 状态
@@ -107,9 +97,7 @@ export interface GanttCalendarSettings {
 	yearViewTagOperator: TagFilterOperator;
 
 	// ========== 侧边栏设置 ==========
-	sidebarShowCheckbox: boolean;
 	sidebarShowTags: boolean;
-	sidebarShowPriority: boolean;
 	sidebarShowTicktick: boolean;
 	sidebarShowFileLocation: boolean;
 	sidebarShowDueDate: boolean;
@@ -119,80 +107,12 @@ export interface GanttCalendarSettings {
 	ganttStartField: DateFieldType;  // 甘特图开始时间字段
 	ganttEndField: DateFieldType;    // 甘特图结束时间字段
 
-	// ========== 同步设置 ==========
-	syncConfiguration?: SyncConfiguration;
-
 	// ========== 视图筛选/排序持久化 ==========
 	// 各视图作用域的筛选与排序状态，随插件设置落 data.json（按 vault 隔离、随库同步）。
 	// 运行时以 calendarStore 为准，main.ts 订阅写回；loadSettings 会按 scope 补全缺省
 	viewFilters?: Record<ViewScope, ViewFilterState>;
 }
 
-/**
- * 同步配置
- */
-export interface SyncConfiguration {
-	enabledSources: {
-		api?: boolean;
-		caldav?: boolean;
-	};
-	syncDirection: 'bidirectional' | 'import-only' | 'export-only';
-	syncInterval: number;
-	conflictResolution: 'local-win' | 'remote-win' | 'newest-win' | 'manual';
-	feishuSyncTargetFile: string;
-	api?: {
-		provider: 'feishu' | 'microsoft-todo' | 'custom';
-		apiKey?: string;
-		endpoint?: string;
-
-		// OAuth 配置
-		clientId?: string;
-		clientSecret?: string;
-		redirectUri?: string;
-
-		// Token
-		accessToken?: string;
-		refreshToken?: string;
-		tokenExpireAt?: number;
-		refreshTokenExpireAt?: number;
-
-		// 用户信息
-		userId?: string;
-		userOpenId?: string;
-		userName?: string;
-
-		// 旧字段保留兼容（飞书）
-		appId?: string;
-		appSecret?: string;
-		tenantId?: string;
-
-		// 飞书任务清单
-		tasklistGuid?: string;
-		taskLists?: FeishuTaskList[];
-		taskListsFetchedAt?: number;
-	};
-	caldav?: {
-		provider: 'google' | 'outlook' | 'apple' | 'custom';
-		url?: string;
-		username?: string;
-		password?: string;
-		clientId?: string;
-		clientSecret?: string;
-		redirectUri?: string;
-		accessToken?: string;
-		refreshToken?: string;
-	};
-	fieldMergeRules?: Array<{
-		field: 'description' | 'completed' | 'dueDate' | 'startDate' | 'priority' | 'status' | 'tags';
-		winner: 'local' | 'remote' | 'newest';
-	}>;
-	pushFilter?: {
-		enabled: boolean;
-		paths: string[];
-		completionStatus: 'all' | 'incomplete-only';
-		sinceDate: string;
-	};
-}
 
 /**
  * 构建器配置接口

@@ -26,7 +26,23 @@ function makeApp(files: Record<string, string>, writes: string[] = []) {
 				writes.push(content);
 			},
 		},
-		plugins: { getPlugin: () => null },
+		// 序列化时需要读到 taskStatuses 才能把 status 映射成复选框符号；
+		// 返回 null 会静默回退成 [ ]，导致状态写入断言失效
+		plugins: {
+			getPlugin: () => ({
+				settings: {
+					taskStatuses: [
+						{ key: 'todo', symbol: ' ', name: '待办' },
+						{ key: 'done', symbol: 'x', name: '已完成' },
+						{ key: 'important', symbol: '!', name: '重要' },
+						{ key: 'canceled', symbol: '-', name: '已取消' },
+						{ key: 'in_progress', symbol: '/', name: '进行中' },
+						{ key: 'question', symbol: '?', name: '有疑问' },
+						{ key: 'start', symbol: 'n', name: '已开始' },
+					],
+				},
+			}),
+		},
 	} as unknown as Parameters<typeof updateTaskProperties>[0];
 }
 
@@ -37,17 +53,17 @@ function makeTask(line: string, filePath = 'notes/p.md', lineNumber = 1): GCTask
 }
 
 describe('updateTaskProperties - 写回安全', () => {
-	it('正常更新：勾选任务并写入完成日期', async () => {
+	it('正常更新：改状态写入对应复选框符号', async () => {
 		const files = { 'notes/p.md': '- [ ] 开发任务 🛫 2026-08-20 📅 2026-08-25' };
 		const app = makeApp(files);
 		const task = makeTask('- [ ] 开发任务 🛫 2026-08-20 📅 2026-08-25');
 
-		await updateTaskProperties(app, task, { completed: true, status: 'done', completionDate: new Date(2026, 7, 27) }, ['tasks', 'dataview']);
+		await updateTaskProperties(app, task, { status: 'important' }, ['tasks', 'dataview']);
 
 		const line = files['notes/p.md'];
-		expect(line).toMatch(/^- \[x\]/);
-		expect(line).toContain('✅ 2026-08-27');
+		expect(line).toMatch(/^- \[!\]/);
 		expect(line).toContain('🛫 2026-08-20');
+		expect(line).toContain('📅 2026-08-25');
 	});
 
 	it('行号漂移：上方插入行后仍能定位正确任务行', async () => {
@@ -83,11 +99,11 @@ describe('updateTaskProperties - 写回安全', () => {
 		const app = makeApp(files);
 		const task = makeTask(line);
 
-		await updateTaskProperties(app, task, { completed: true, status: 'done', completionDate: new Date(2026, 7, 27) }, ['tasks', 'dataview']);
+		await updateTaskProperties(app, task, { status: 'in_progress' }, ['tasks', 'dataview']);
 
 		const result = files['notes/p.md'];
 		expect(result).toContain('[project:: 重构]'); // 未识别字段未丢失
-		expect(result).toContain('✅ 2026-08-27');
+		expect(result).toMatch(/^- \[\/\]/);          // 状态符号写入
 	});
 
 	it('非结构化 %%注释%% 在更新后保留', async () => {

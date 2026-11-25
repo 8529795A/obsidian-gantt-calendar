@@ -6,7 +6,6 @@
 import type GanttCalendarPlugin from '../../main';
 import { registerCommonCommands } from './common';
 import { registerConditionalCommands } from './conditional';
-import { registerFeishuCommands } from './feishuCommands';
 
 /**
  * 注册所有命令
@@ -15,5 +14,4 @@ import { registerFeishuCommands } from './feishuCommands';
 export function registerAllCommands(plugin: GanttCalendarPlugin): void {
 	registerCommonCommands(plugin);
 	registerConditionalCommands(plugin);
-	registerFeishuCommands(plugin);
 }

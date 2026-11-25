@@ -4,7 +4,6 @@ import { Logger } from './utils/logger';
 
 // 任务更新相关函数已迁移至 tasks/taskUpdater.ts，此处重新导出以保持向后兼容
 export {
-	updateTaskCompletion,
 	updateTaskDateField,
 	updateTaskProperties,
 } from './tasks/taskUpdater';

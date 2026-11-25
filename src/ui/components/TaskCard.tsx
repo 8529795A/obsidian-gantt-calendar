@@ -1,10 +1,9 @@
 import { memo, useMemo, type CSSProperties, type JSX } from 'react';
 import type { GCTask } from '../../types';
-import { resolveAnchorDateField } from '../../types';
 import type { TaskCardConfig } from '../../components/TaskCard/TaskCardConfig';
-import { TaskCardClasses, TimeBadgeClasses } from '../../utils/bem';
+import { TaskCardClasses, TimeBadgeClasses, ContextMenuClasses } from '../../utils/bem';
 import { isVirtualTask, getVirtualMetadata } from '../../tasks/virtualTaskGenerator';
-import { getStatusColor, DEFAULT_TASK_STATUSES, getCurrentThemeMode } from '../../tasks/taskStatus';
+import { getStatusColor, DEFAULT_TASK_STATUSES, getCurrentThemeMode, ALL_BUILTIN_STATUSES, type TaskStatus } from '../../tasks/taskStatus';
 import { formatDate } from '../../dateUtils/dateUtilsIndex';
 import { toISOStringLocal } from '../../dateUtils/timezone';
 import { usePlugin, useApp } from '../pluginContext';
@@ -15,19 +14,13 @@ import { useTaskTooltip } from './TooltipProvider';
 import { useDragSource } from '../utils/useDragAndDrop';
 import { openFileInExistingLeaf } from '../../utils/fileOpener';
 import { isTouchNow } from '../utils/platform';
-import { updateTaskCompletion } from '../../tasks/taskUpdater';
-import { completeRecurringTask } from '../../tasks/recurringTaskCompleter';
 import { openEditTaskModal } from '../modals/TaskFormModal';
 import { createNoteFromTask } from '../../contextMenu/commands/createNoteFromTask';
 import { createNoteFromTaskAlias } from '../../contextMenu/commands/createNoteFromTaskAlias';
 import { postponeTask } from '../../contextMenu/commands/postponeTask';
-import { cancelTask } from '../../contextMenu/commands/cancelTask';
-import { restoreTask } from '../../contextMenu/commands/restoreTask';
 import { deleteTask } from '../../contextMenu/commands/deleteTask';
 import { setTaskStatus } from '../../contextMenu/commands/setTaskStatus';
-import { setTaskPriority } from '../../contextMenu/commands/setPriority';
 import { i18n } from '../../i18n/i18n';
-import { Logger } from '../../utils/logger';
 
 export interface ReactTaskCardProps {
 	task: GCTask;
@@ -38,22 +31,6 @@ export interface ReactTaskCardProps {
 	/** 容器自管触屏长按手势时，禁用卡片内置长按菜单（如时间画布拖动） */
 	disableLongPressMenu?: boolean;
 }
-
-const PRIORITY_ICONS: Record<string, string> = {
-	highest: '🔺',
-	high: '⏫',
-	medium: '🔼',
-	low: '🔽',
-	lowest: '⏬',
-};
-
-const PRIORITY_CLASSES: Record<string, string> = {
-	highest: 'priority-highest',
-	high: 'priority-high',
-	medium: 'priority-medium',
-	low: 'priority-low',
-	lowest: 'priority-lowest',
-};
 
 function formatDateForDisplay(date: Date, precision?: 'day' | 'time'): string {
 	if (precision === 'time') {
@@ -85,11 +62,10 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		if (config.compact) list.push(TaskCardClasses.modifiers.compact);
 		if (virtual) list.push(TaskCardClasses.modifiers.virtual);
 		else if (task.repeat) list.push(TaskCardClasses.modifiers.recurring);
-		list.push(task.completed ? TaskCardClasses.modifiers.completed : TaskCardClasses.modifiers.pending);
-		// 有任务状态（含已完成）时添加 task-with-status，激活 CSS 变量卡片着色
+		// 状态只做颜色标签，不再有 completed/pending 语义分支
 		if (task.status) list.push('task-with-status');
 		return list;
-	}, [config.viewModifier, config.variant, config.compact, virtual, task.repeat, task.completed, task.status]);
+	}, [config.viewModifier, config.variant, config.compact, virtual, task.repeat, task.status]);
 
 	// ===== 状态颜色 =====
 	const style = useMemo<CSSProperties | undefined>(() => {
@@ -126,16 +102,14 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		const enabledFormats = plugin.settings.enabledTaskFormats || ['tasks'];
 		const taskNotePath = plugin.settings.taskNotePath || 'Tasks';
 		const refresh = onRefresh || (() => {});
-		const isCancelled = task.cancelled === true;
+		// 状态段数据源：设置里的全部状态（默认 + 用户自定义）。
+		// 兜底用 ALL_BUILTIN_STATUSES 而非 DEFAULT_TASK_STATUSES——后者只有 todo/done 两项，
+		// 一旦设置未就绪，菜单会静默退化成"只有两个状态"的表象。
+		const statuses: TaskStatus[] = plugin.settings?.taskStatuses?.length
+			? plugin.settings.taskStatuses
+			: ALL_BUILTIN_STATUSES;
+		const currentStatusKey = task.status ?? (DEFAULT_TASK_STATUSES[0]?.key ?? 'important');
 
-		const priorities: Array<{ value: 'highest' | 'high' | 'medium' | 'low' | 'lowest' | 'normal'; label: string; icon: string }> = [
-			{ value: 'highest', label: i18n.t('common.priority.highest'), icon: '🔺' },
-			{ value: 'high', label: i18n.t('common.priority.high'), icon: '⏫' },
-			{ value: 'medium', label: i18n.t('common.priority.medium'), icon: '🔼' },
-			{ value: 'normal', label: i18n.t('common.priority.normal'), icon: '◽' },
-			{ value: 'low', label: i18n.t('common.priority.low'), icon: '🔽' },
-			{ value: 'lowest', label: i18n.t('common.priority.lowest'), icon: '⏬' },
-		];
 		const postponeOptions = [
 			{ days: 1, label: i18n.t('contextMenu.postpone.days1') },
 			{ days: 3, label: i18n.t('contextMenu.postpone.days3') },
@@ -179,31 +153,25 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 				],
 			},
 			{
-				items: priorities.map((p) => ({
-					key: `priority-${p.value}`,
-					title: `${p.icon} ${p.label}`,
+				// 状态段：列出设置里的全部状态（默认 + 用户自定义），对勾标出当前状态。
+				// 此前只硬编码 important/question 两项，用户自建的状态在右键菜单里完全无法触达。
+				title: i18n.t('contextMenu.statusLabel'),
+				items: statuses.map((st) => ({
+					key: `status-${st.key}`,
+					title: (
+						<>
+							<span
+								className={ContextMenuClasses.statusDot}
+								style={{ backgroundColor: getStatusColor(st.key, statuses)?.bg }}
+							/>
+							{st.name}
+						</>
+					),
+					checked: currentStatusKey === st.key,
 					onClick: () => {
-						void setTaskPriority(app, task, p.value, enabledFormats, refresh);
+						void setTaskStatus(app, task, st.key, enabledFormats, refresh);
 					},
 				})),
-			},
-			{
-				items: [
-					{
-						key: 'statusImportant',
-						title: i18n.t('contextMenu.statusImportant'),
-						onClick: () => {
-							void setTaskStatus(app, task, 'important', enabledFormats, refresh);
-						},
-					},
-					{
-						key: 'statusQuestion',
-						title: i18n.t('contextMenu.statusQuestion'),
-						onClick: () => {
-							void setTaskStatus(app, task, 'question', enabledFormats, refresh);
-						},
-					},
-				],
 			},
 			{
 				items: [
@@ -228,18 +196,6 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 			{
 				items: [
 					{
-						key: 'cancelRestore',
-						title: isCancelled ? i18n.t('contextMenu.restoreTask') : i18n.t('contextMenu.cancelTask'),
-						icon: isCancelled ? 'rotate-ccw' : 'x',
-						onClick: () => {
-							if (isCancelled) {
-								void restoreTask(app, task, enabledFormats, refresh);
-							} else {
-								void cancelTask(app, task, enabledFormats, refresh);
-							}
-						},
-					},
-					{
 						key: 'delete',
 						title: i18n.t('contextMenu.deleteTask'),
 						icon: 'trash',
@@ -250,7 +206,7 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 				],
 			},
 		];
-	}, [task, app, plugin.settings.enabledTaskFormats, plugin.settings.taskNotePath, virtual, onRefresh]);
+	}, [task, app, plugin.settings.enabledTaskFormats, plugin.settings.taskNotePath, plugin.settings.taskStatuses, virtual, onRefresh]);
 
 	// ===== 拖拽（useDragSource 封装） =====
 	const dragProps = useDragSource({
@@ -287,30 +243,6 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 		})();
 	};
 
-	const handleCheckboxChange = (checked: boolean) => {
-		void (async () => {
-			try {
-				if (checked && task.repeat && !virtual) {
-					// 重复任务完成：写入锚定字段（回退链，无锚点写截止日）
-					const dateField = resolveAnchorDateField(task) ?? 'dueDate';
-					await completeRecurringTask(app, task, plugin.settings.enabledTaskFormats, dateField);
-				} else if (!virtual) {
-					await updateTaskCompletion(app, task, checked, plugin.settings.enabledTaskFormats);
-				}
-				// 写回完成后立即刷新 Repository 缓存并推送最新数据到视图，
-				// 跳过文件修改事件的 50+75ms 防抖回流（与拖拽修复同模式）
-				await plugin.taskCache.refreshFile(task.filePath);
-				const { useCalendarStore } = await import('../store/calendarStore');
-				useCalendarStore.getState().notifyTasksUpdated(
-					plugin.taskCache.getAllTasks(), task.filePath
-				);
-				onRefresh?.();
-			} catch (error) {
-				Logger.error('TaskCard', 'Error updating task:', error);
-			}
-		})();
-	};
-
 	// ===== 子元素 =====
 	const metadataBlock = task.metadataFields && task.metadataFields.length > 0 ? (
 		<div className={TaskCardClasses.elements.metadata}>
@@ -326,18 +258,16 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 	const timeBadges = (() => {
 		if (!config.showTimes || !config.timeFields) return null;
 		const tc = config.timeFields;
-		if (!tc.showCreated && !tc.showStart && !tc.showScheduled && !tc.showDue && !tc.showCancelled && !tc.showCompletion) {
+		if (!tc.showCreated && !tc.showStart && !tc.showScheduled && !tc.showDue) {
 			return null;
 		}
 		const dp = task.datePrecision || {};
-		const isOverdue = !!tc.showOverdueIndicator && !!task.dueDate && task.dueDate < new Date() && !task.completed;
+		const isOverdue = !!tc.showOverdueIndicator && !!task.dueDate && task.dueDate < new Date();
 		const badges: Array<{ key: keyof typeof dp; label: string; date?: Date; cls: string; overdue?: boolean; show: boolean }> = [
 			{ key: 'createdDate', label: i18n.t('taskCard.created'), date: task.createdDate, cls: TimeBadgeClasses.created, show: !!tc.showCreated },
 			{ key: 'startDate', label: i18n.t('taskCard.start'), date: task.startDate, cls: TimeBadgeClasses.start, show: !!tc.showStart },
 			{ key: 'scheduledDate', label: i18n.t('taskCard.scheduled'), date: task.scheduledDate, cls: TimeBadgeClasses.scheduled, show: !!tc.showScheduled },
 			{ key: 'dueDate', label: i18n.t('taskCard.due'), date: task.dueDate, cls: TimeBadgeClasses.due, overdue: isOverdue, show: !!tc.showDue },
-			{ key: 'cancelledDate', label: i18n.t('taskCard.cancelled'), date: task.cancelledDate, cls: TimeBadgeClasses.cancelled, show: !!tc.showCancelled },
-			{ key: 'completionDate', label: i18n.t('taskCard.done'), date: task.completionDate, cls: TimeBadgeClasses.completion, show: !!tc.showCompletion },
 		];
 		return (
 			<div className={TaskCardClasses.elements.times}>
@@ -355,17 +285,17 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 
 	const tags = config.showTags && task.tags && task.tags.length > 0 ? (
 		<div className={TaskCardClasses.elements.tags}>
-			{task.tags.map((t) => (
+			{(config.maxTags && config.maxTags > 0 ? task.tags.slice(0, config.maxTags) : task.tags).map((t) => (
 				<TagPillSpan key={t} label={t} showHash />
 			))}
-		</div>
-	) : null;
-
-	const priority = config.showPriority && task.priority && PRIORITY_ICONS[task.priority] ? (
-		<div className={TaskCardClasses.elements.priority}>
-			<span className={`${TaskCardClasses.elements.priorityBadge} ${PRIORITY_CLASSES[task.priority]}`}>
-				{PRIORITY_ICONS[task.priority]}
-			</span>
+			{config.maxTags && config.maxTags > 0 && task.tags.length > config.maxTags ? (
+				<span
+					className={TaskCardClasses.elements.tagsOverflow}
+					title={task.tags.slice(config.maxTags).map((t) => `#${t}`).join(' ')}
+				>
+					{`+${task.tags.length - config.maxTags}`}
+				</span>
+			) : null}
 		</div>
 	) : null;
 
@@ -404,28 +334,6 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 			onMouseLeave={() => tooltip.hide()}
 			onContextMenu={() => tooltip.cancel()}
 		>
-			{config.showCheckbox ? (
-				<input
-					type="checkbox"
-					className={TaskCardClasses.elements.checkbox}
-					checked={task.completed}
-					onChange={(e) => {
-						e.stopPropagation();
-						if (virtual) {
-							void (async () => {
-								const meta = getVirtualMetadata(task);
-								if (meta?.sourceTaskId) {
-									const [filePath, lineStr] = meta.sourceTaskId.split(':');
-									await openFileInExistingLeaf(app, filePath, parseInt(lineStr));
-								}
-							})();
-							return;
-						}
-						handleCheckboxChange(e.target.checked);
-					}}
-					onClick={(e) => e.stopPropagation()}
-				/>
-			) : null}
 			{description}
 			{config.showTicktick ? (
 				<>
@@ -435,7 +343,6 @@ export const TaskCard = memo(function TaskCard({ task, config, targetDate, onCli
 			) : null}
 			{task.repeat ? <span className={TaskCardClasses.elements.repeatIndicator}>🔁</span> : null}
 			{tags}
-			{priority}
 			{timeBadges}
 			{fileLocation}
 			{warning}

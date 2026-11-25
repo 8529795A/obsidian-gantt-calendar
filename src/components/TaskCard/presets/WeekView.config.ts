@@ -9,10 +9,8 @@ export const WeekViewConfig: TaskCardConfig = {
 	viewModifier: 'week',
 
 	// 元素显示控制
-	showCheckbox: true,
 	showDescription: true,
 	showTags: true,
-	showPriority: true,
 	showFileLocation: false,
 	showWarning: true,
 	showTicktick: true,

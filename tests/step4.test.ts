@@ -8,10 +8,8 @@ import {
 	isIncomplete,
 	isCompleted,
 	isCancelled,
-	parseTasksPriority,
 	parseTasksDates,
 	parseTasksAttributes,
-	parseDataviewPriority,
 	parseDataviewDates,
 	parseDataviewAttributes,
 	parseTaskAttributes,
@@ -25,58 +23,50 @@ import {
 describe('Step4: 任务属性解析', () => {
 	// ==================== 复选框状态 ====================
 	describe('parseCheckboxStatus', () => {
-		it('TP-01: [ ] → todo', () => {
+		it('TP-01: [ ] 表示无状态，返回空串', () => {
 			const r = parseCheckboxStatus(' ');
-			expect(r.completed).toBe(false);
-			expect(r.cancelled).toBe(false);
-			expect(r.status).toBe('todo');
+			expect(r.status).toBe('');
 		});
 
-		it('TP-02: [x] → done', () => {
+
+		it('TP-02: [x] 已无映射 → 空串，且不产出 completed', () => {
 			const r = parseCheckboxStatus('x');
-			expect(r.completed).toBe(true);
-			expect(r.cancelled).toBe(false);
-			expect(r.status).toBe('done');
+			expect(r.status).toBe('');
+			expect('completed' in r).toBe(false);
 		});
+
 
 		it('TP-03: [!] → important', () => {
 			const r = parseCheckboxStatus('!');
-			expect(r.completed).toBe(false);
 			expect(r.status).toBe('important');
 		});
 
 		it('TP-04: [-] → canceled', () => {
 			const r = parseCheckboxStatus('-');
-			expect(r.completed).toBe(false);
-			expect(r.cancelled).toBe(true);
 			expect(r.status).toBe('canceled');
 		});
 
 		it('TP-05: [/] → in_progress', () => {
 			const r = parseCheckboxStatus('/');
-			expect(r.completed).toBe(false);
 			expect(r.status).toBe('in_progress');
 		});
 
 		it('TP-06: [?] → question', () => {
 			const r = parseCheckboxStatus('?');
-			expect(r.completed).toBe(false);
 			expect(r.status).toBe('question');
 		});
 
 		it('TP-07: [n] → start', () => {
 			const r = parseCheckboxStatus('n');
-			expect(r.completed).toBe(false);
 			expect(r.status).toBe('start');
 		});
 
-		it('TP-02a: 大写 X → done (completed=true, 但 DEFAULT_STATUSES 无大写X符号)', () => {
+		it('TP-02a: 大写 X → 无映射，返回空串', () => {
 			const r = parseCheckboxStatus('X');
-			// normalized='x' → completed=true, 但 parseStatusFromCheckbox 查符号表
-			// DEFAULT_TASK_STATUSES 中 symbol='x'(小写), 大写X查不到 → status='todo'
-			expect(r.completed).toBe(true);
+			expect(r.status).toBe('');
 			expect(r.originalStatus).toBe('X');
 		});
+
 	});
 
 	describe('isIncomplete / isCompleted / isCancelled', () => {
@@ -100,31 +90,8 @@ describe('Step4: 任务属性解析', () => {
 	});
 
 	// ==================== Tasks 格式解析 ====================
-	describe('parseTasksPriority', () => {
-		it('TP-19: ⏫ → high', () => {
-			expect(parseTasksPriority('任务 ⏫ 内容')).toBe('high');
-		});
-
-		it('TP-19: 🔺 → highest', () => {
-			expect(parseTasksPriority('🔺 重要任务')).toBe('highest');
-		});
-
-		it('TP-19: 🔼 → medium', () => {
-			expect(parseTasksPriority('任务 🔼')).toBe('medium');
-		});
-
-		it('TP-19: 🔽 → low', () => {
-			expect(parseTasksPriority('任务 🔽')).toBe('low');
-		});
-
-		it('TP-19: ⏬ → lowest', () => {
-			expect(parseTasksPriority('任务 ⏬')).toBe('lowest');
-		});
-
-		it('TP-19d: 无优先级 → undefined', () => {
-			expect(parseTasksPriority('普通任务')).toBeUndefined();
-		});
-	});
+	// 注：优先级解析已整体移除（2026-11-25），相关契约由
+	// tests/priorityRemovalContract.test.ts 统一锁定，此处不再重复。
 
 	describe('parseTasksDates', () => {
 		it('TP-21: ➕ → createdDate', () => {
@@ -148,14 +115,14 @@ describe('Step4: 任务属性解析', () => {
 			expect(dates.dueDate).toBeInstanceOf(Date);
 		});
 
-		it('TP-25: ❌ → cancelledDate', () => {
+		it('TP-25: ❌ 已不再解析为取消日期（字段随重构移除）', () => {
 			const { dates } = parseTasksDates('任务 ❌ 2024-01-15');
-			expect(dates.cancelledDate).toBeInstanceOf(Date);
+			expect('cancelledDate' in dates).toBe(false);
 		});
 
-		it('TP-26: ✅ → completionDate', () => {
+		it('TP-26: ✅ 已不再解析为完成日期（字段随重构移除）', () => {
 			const { dates } = parseTasksDates('任务 ✅ 2024-01-15');
-			expect(dates.completionDate).toBeInstanceOf(Date);
+			expect('completionDate' in dates).toBe(false);
 		});
 
 		it('TP-27: 含时间的日期精度', () => {
@@ -177,35 +144,19 @@ describe('Step4: 任务属性解析', () => {
 
 	describe('parseTasksAttributes', () => {
 		it('TP-19e: 完整属性解析', () => {
-			const attrs = parseTasksAttributes('任务 ⏫ ➕ 2024-01-10 📅 2024-01-15');
-			expect(attrs.priority).toBe('high');
+			const attrs = parseTasksAttributes('任务 ➕ 2024-01-10 📅 2024-01-15');
 			expect(attrs.dates.createdDate).toBeInstanceOf(Date);
 			expect(attrs.dates.dueDate).toBeInstanceOf(Date);
-			expect(attrs.hasCancelledDate).toBe(false);
 		});
 
-		it('TP-19f: 无属性时默认 normal 优先级', () => {
+		it('TP-19f: 无属性时 dates 为空（优先级已移除）', () => {
 			const attrs = parseTasksAttributes('普通任务');
-			expect(attrs.priority).toBe('normal');
 			expect(Object.keys(attrs.dates)).toHaveLength(0);
+			expect('priority' in attrs).toBe(false);
 		});
 	});
 
 	// ==================== Dataview 格式解析 ====================
-	describe('parseDataviewPriority', () => {
-		it('TP-20: [priority:: high]', () => {
-			expect(parseDataviewPriority('任务 [priority:: high]')).toBe('high');
-		});
-
-		it('TP-20: 大写 HIGHEST', () => {
-			expect(parseDataviewPriority('任务 [priority:: HIGHEST]')).toBe('highest');
-		});
-
-		it('TP-20a2: 无优先级 → undefined', () => {
-			expect(parseDataviewPriority('普通任务')).toBeUndefined();
-		});
-	});
-
 	describe('parseDataviewDates', () => {
 		it('TP-21a: 解析 [created:: date]', () => {
 			const { dates } = parseDataviewDates('任务 [created:: 2024-01-10]');
@@ -231,8 +182,7 @@ describe('Step4: 任务属性解析', () => {
 
 	describe('parseDataviewAttributes', () => {
 		it('TP-20a3: 完整属性解析', () => {
-			const attrs = parseDataviewAttributes('任务 [priority:: high] [created:: 2024-01-10] [due:: 2024-01-15]');
-			expect(attrs.priority).toBe('high');
+			const attrs = parseDataviewAttributes('任务 [created:: 2024-01-10] [due:: 2024-01-15]');
 			expect(attrs.dates.createdDate).toBeInstanceOf(Date);
 			expect(attrs.dates.dueDate).toBeInstanceOf(Date);
 		});
@@ -241,14 +191,12 @@ describe('Step4: 任务属性解析', () => {
 	// ==================== 统一接口 ====================
 	describe('parseTaskAttributes', () => {
 		it('TP-19g: Tasks 格式统一接口', () => {
-			const attrs = parseTaskAttributes('任务 ⏫ 📅 2024-01-15', 'tasks');
-			expect(attrs.priority).toBe('high');
+			const attrs = parseTaskAttributes('任务 📅 2024-01-15', 'tasks');
 			expect(attrs.dates.dueDate).toBeInstanceOf(Date);
 		});
 
 		it('TP-20a: Dataview 格式统一接口', () => {
-			const attrs = parseTaskAttributes('任务 [priority:: high] [due:: 2024-01-15]', 'dataview');
-			expect(attrs.priority).toBe('high');
+			const attrs = parseTaskAttributes('任务 [due:: 2024-01-15]', 'dataview');
 			expect(attrs.dates.dueDate).toBeInstanceOf(Date);
 		});
 	});

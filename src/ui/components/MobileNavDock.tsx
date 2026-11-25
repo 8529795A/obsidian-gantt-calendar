@@ -6,10 +6,8 @@ import { ContextMenuClasses } from '../../utils/bem';
 import { usePlugin } from '../pluginContext';
 import { useCalendarStore } from '../store/calendarStore';
 import { i18n } from '../../i18n/i18n';
-import { formatDate, getWeekOfDate } from '../../dateUtils/dateUtilsIndex';
+import { formatDate, getWeekOfDate, getWeekFromStart } from '../../dateUtils/dateUtilsIndex';
 import { openCreateTaskModal } from '../modals/TaskFormModal';
-import { syncFeishuTasks } from '../../commands/feishuCommands';
-import type GanttCalendarPlugin from '../../../main';
 import { Icon } from './Icon';
 import { MOTION, easeOutTransition } from '../motion';
 
@@ -34,6 +32,7 @@ export function MobileNavDock(): JSX.Element {
 	const plugin = usePlugin();
 	const viewType = useCalendarStore((s) => s.viewType);
 	const currentDate = useCalendarStore((s) => s.currentDate);
+	const weekWindowStart = useCalendarStore((s) => s.weekWindowStart);
 	const startOnMonday = !!plugin.settings.startOnMonday;
 	useCalendarStore((s) => s.settingsVersion);
 
@@ -68,6 +67,11 @@ export function MobileNavDock(): JSX.Element {
 			case 'year': return String(currentDate.getFullYear());
 			case 'month': return (i18n.t('common.monthsAbbr') as unknown as string[])[currentDate.getMonth()];
 			case 'week': {
+				// 滚动窗口态只显示日期区间（窗口可横跨两周，W 周号会误导）
+				if (weekWindowStart) {
+					const win = getWeekFromStart(weekWindowStart, startOnMonday);
+					return `${formatDate(win.startDate, 'MM/dd')}-${formatDate(win.endDate, 'MM/dd')}`;
+				}
 				const week = getWeekOfDate(currentDate, undefined, startOnMonday);
 				return `W${week.weekNumber}(${formatDate(week.startDate, 'MM/dd')}-${formatDate(week.endDate, 'MM/dd')})`;
 			}
@@ -75,7 +79,7 @@ export function MobileNavDock(): JSX.Element {
 			case 'task': return i18n.t('views.taskView.title');
 			default: return '';
 		}
-	}, [viewType, currentDate, startOnMonday]);
+	}, [viewType, currentDate, startOnMonday, weekWindowStart]);
 
 	// ===== 日期导航（task 视图无日期概念，隐藏导航段） =====
 	const isCalendar = viewType === 'year' || viewType === 'month' || viewType === 'week' || viewType === 'day';
@@ -85,7 +89,20 @@ export function MobileNavDock(): JSX.Element {
 		switch (viewType) {
 			case 'year': d.setFullYear(d.getFullYear() + dir); break;
 			case 'month': d.setMonth(d.getMonth() + dir); break;
-			case 'week': d.setDate(d.getDate() + 7 * dir); break;
+			// 周视图：真滚动窗口，每次 ±2 天（与桌面工具栏同一策略，
+			// 必须显式推进 weekWindowStart，否则被 startOfWeek 吸附而看不出移动）
+			case 'week': {
+				const st = useCalendarStore.getState();
+				const base = st.weekWindowStart ?? getWeekOfDate(currentDate, undefined, startOnMonday).startDate;
+				const next = new Date(base);
+				next.setDate(next.getDate() + 2 * dir);
+				next.setHours(0, 0, 0, 0);
+				const anchor = new Date(next);
+				anchor.setDate(anchor.getDate() + 2);
+				// 原子写入：分开调用会被 setCurrentDate 清空 weekWindowStart
+				st.setWeekWindow(next, anchor);
+				return;
+			}
 			case 'day': d.setDate(d.getDate() + dir); break;
 			default: return;
 		}
@@ -93,7 +110,9 @@ export function MobileNavDock(): JSX.Element {
 	};
 
 	const goToday = () => {
-		useCalendarStore.getState().setCurrentDate(new Date());
+		const st = useCalendarStore.getState();
+		st.setWeekWindowStart(null);
+		st.setCurrentDate(new Date());
 	};
 
 	// ===== 动作 =====
@@ -195,7 +214,6 @@ export function MobileNavDock(): JSX.Element {
 
 								<div className={ContextMenuClasses.section}>
 									{renderItem('act-create', 'plus', i18n.t('toolbar.createTask.ariaLabel'), openCreateTask)}
-									{renderItem('act-sync', 'cloud-download', i18n.t('toolbar.syncButton.defaultTitle'), () => void syncFeishuTasks(plugin as GanttCalendarPlugin))}
 									{renderItem('act-refresh', 'refresh-cw', i18n.t('toolbar.refresh.refreshTask'), () => void handleRefresh())}
 									{renderItem('act-settings', 'settings', i18n.t('toolbar.settingsButton.ariaLabel'), openSettings)}
 								</div>

@@ -98,45 +98,6 @@ export class TaskUpdateHandler {
 		}
 	}
 
-	/**
-	 * 处理进度变更
-	 *
-	 * @param ganttTask - 甘特图 任务对象
-	 * @param progress - 新的进度值 (0-100)
-	 * @param _allTasks - 所有任务列表（保留参数以保持兼容性，但不再使用）
-	 */
-	async handleProgressChange(
-		ganttTask: GanttChartTask,
-		progress: number,
-		_allTasks: GCTask[]
-	): Promise<void> {
-		try {
-			// 直接从 GanttChartTask 获取任务信息
-			if (!ganttTask.filePath || ganttTask.lineNumber === undefined) {
-				Logger.error('TaskUpdateHandler', 'Missing task information:', ganttTask);
-				new Notice(i18n.t('gantt.taskInfoIncomplete'));
-				return;
-			}
-
-			const completed = progress >= 100;
-
-			// 使用 updateTaskCompletion，它会自动更新 completionDate 和 status
-			const { updateTaskCompletion } = await import('../../tasks/taskUpdater');
-			// 直接使用 ganttTask（已包含完整任务信息）
-			await updateTaskCompletion(
-				this.app,
-				ganttTask as unknown as GCTask,
-				completed,
-				this.plugin.settings.enabledTaskFormats
-			);
-
-			new Notice(completed ? i18n.t('gantt.markedComplete') : i18n.t('gantt.markedIncomplete'));
-
-		} catch (error) {
-			Logger.error('TaskUpdateHandler', 'Error updating progress:', error);
-			new Notice(i18n.t('gantt.updateProgressFailed', { error: (error as Error).message }));
-		}
-	}
 
 	/**
 	 * 处理任务点击事件

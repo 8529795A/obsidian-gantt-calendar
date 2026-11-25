@@ -11,10 +11,14 @@ export interface ContextMenuItemDef {
 	title: ReactNode;
 	icon?: string;
 	disabled?: boolean;
+	/** 选中态（如当前任务状态），在右侧渲染对勾 */
+	checked?: boolean;
 	onClick?: () => void;
 }
 
 export interface ContextMenuSection {
+	/** 可选的段标题：用于区分同层级的并列分组（如「优先级」「任务状态」） */
+	title?: ReactNode;
 	items: ContextMenuItemDef[];
 }
 
@@ -141,6 +145,9 @@ export function ContextMenuTrigger({
 	// 菜单项渲染（浮动菜单与手机底部面板共用）
 	const renderSections = () => sections.map((section, si) => (
 		<div key={si} className={ContextMenuClasses.section}>
+			{section.title ? (
+				<div className={ContextMenuClasses.sectionTitle}>{section.title}</div>
+			) : null}
 			{section.items.map((item) => (
 				<button
 					key={item.key}
@@ -154,6 +161,7 @@ export function ContextMenuTrigger({
 				>
 					{item.icon ? <Icon icon={item.icon} className={ContextMenuClasses.itemIcon} /> : null}
 					<span className={ContextMenuClasses.itemLabel}>{item.title}</span>
+					{item.checked ? <Icon icon="check" className={ContextMenuClasses.itemCheck} /> : null}
 				</button>
 			))}
 		</div>

@@ -78,11 +78,17 @@ export function clearBlockDragMeta(): void {
 	blockDragMeta = null;
 }
 
-export function useBlockResize(onCommit: BlockResizeCommit) {
+export function useBlockResize(onCommit: BlockResizeCommit, options?: { windowStartMin?: number; windowEndMin?: number }) {
 	const activeRef = useRef<ActiveResize | null>(null);
 	const handlersRef = useRef<DragHandlers | null>(null);
 	const commitRef = useRef(onCommit);
 	commitRef.current = onCommit;
+	// 小时窗口（日视图左右分栏）：columnEl 的 rect.top 是「本窗口顶部」，
+	// 换算绝对分钟必须加回窗口起点，否则右轴（12-24）拖动会被算成左轴时刻。
+	const windowStartRef = useRef(options?.windowStartMin ?? 0);
+	const windowEndRef = useRef(options?.windowEndMin ?? 24 * 60);
+	windowStartRef.current = options?.windowStartMin ?? 0;
+	windowEndRef.current = options?.windowEndMin ?? 24 * 60;
 
 	const detach = useCallback(() => {
 		const handlers = handlersRef.current;
@@ -135,23 +141,27 @@ export function useBlockResize(onCommit: BlockResizeCommit) {
 
 		const move = (ev: PointerEvent) => {
 			const rect = active.columnEl.getBoundingClientRect();
-			const minutes = snapMinutes(pxToMinutes(ev.clientY - rect.top), ev.altKey);
+			// 窗口内像素 → 分钟，再加回窗口起点得到「绝对分钟」
+			const winStart = windowStartRef.current;
+			const winEnd = windowEndRef.current;
+			const minutes = snapMinutes(pxToMinutes(ev.clientY - rect.top) + winStart, ev.altKey);
 
 			if (active.edge === 'top') {
-				// 上边缘：钳制 [0, 段终点 - 最小时长]
-				active.newStartMin = Math.max(0, Math.min(minutes, active.seg.endMin - MIN_DURATION_MIN));
+				// 上边缘：钳制到本窗口 [winStart, 段终点 - 最小时长]
+				active.newStartMin = Math.max(winStart, Math.min(minutes, active.seg.endMin - MIN_DURATION_MIN));
 			} else {
-				// 下边缘：钳制 [段起点 + 最小时长, 24:00]
-				active.newEndMin = Math.min(24 * 60, Math.max(minutes, active.seg.startMin + MIN_DURATION_MIN));
+				// 下边缘：钳制到本窗口 [段起点 + 最小时长, winEnd]
+				active.newEndMin = Math.min(winEnd, Math.max(minutes, active.seg.startMin + MIN_DURATION_MIN));
 			}
 
 			if (active.newStartMin === active.seg.startMin && active.newEndMin === active.seg.endMin) return;
 			active.changed = true;
 
-			// 乐观 DOM 预览
-			active.blockEl.style.top = `${minutesToPx(active.newStartMin)}px`;
+			// 乐观 DOM 预览：块位置以窗口内坐标为基准（减去窗口起点）
+			active.blockEl.style.top = `${minutesToPx(active.newStartMin - winStart)}px`;
 			active.blockEl.style.height = `${minutesToPx(active.newEndMin - active.newStartMin)}px`;
-			const label = active.blockEl.querySelector(`.${WeekViewClasses.elements.timeBlockTime}`);
+			const label = active.blockEl.querySelector(`.${WeekViewClasses.elements.timeBlockTime}`)
+				?? active.blockEl.querySelector('.gc-day-canvas__block-time');
 			if (label) label.textContent = `${formatMinutes(active.newStartMin)} – ${formatMinutes(active.newEndMin)}`;
 			active.tipEl.style.left = `${ev.clientX + 12}px`;
 			active.tipEl.style.top = `${ev.clientY - 28}px`;

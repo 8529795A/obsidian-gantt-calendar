@@ -8,6 +8,9 @@
 .gc-day-canvas__body {
 	display: flex;
 	min-width: 0;
+	/* 列容器（.gc-day-canvas）的子项：高度按内容（画布内联 height）决定，
+	   禁止被 flex 压缩，否则画布高度会被改写、块下边缘与刻度错位 */
+	flex: 0 0 auto;
 }
 
 .gc-day-canvas__gutter {
@@ -300,4 +303,24 @@
 		height: 18px;
 		touch-action: none;
 	}
+}
+
+/* 画布下方灰字说明：跨分栏块需用编辑面板改时间（假边缘不可拖） */
+.gc-day-canvas__hint {
+	margin-top: 6px;
+	padding: 0 2px;
+	font-size: var(--gc-font-xxs);
+	line-height: 1.5;
+	color: var(--text-faint);
+	user-select: none;
+}
+
+/* 画布根容器：仅用于在 body 下方追加说明文字。
+   必须保持 body/gutter/canvas 的原有 flex 关系不被改写——
+   一旦把画布再包一层列容器，画布的 flex:1 会改为在纵轴生效并压掉内联
+   height（窗口时长 × HOUR_PX），导致块下边缘与时间刻度错位。 */
+.gc-day-canvas {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
 }

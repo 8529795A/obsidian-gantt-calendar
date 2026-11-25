@@ -67,6 +67,11 @@
 	cursor: pointer;
 	transition: background-color var(--gc-dur-fast) var(--gc-ease-out);
 	overflow: hidden;
+	/* 只读滚动条（绝对定位）的定位参照 */
+	position: relative;
+	/* min-height:0 是格内滚动的必要条件：flex 子项默认 min-height:auto 会被内容撑高，
+	   导致 .tasks 的 scrollHeight 永远等于 clientHeight、overflow-y:auto 不触发滚动 */
+	min-height: 0;
 }
 
 .gc-month-view__day-cell:hover {
@@ -123,6 +128,27 @@
 	white-space: nowrap;
 }
 
+/* 日头右侧任务计数徽标：浅蓝底红字小圆。
+   margin-left:auto 推到行尾（农历在时紧贴其右，无农历时靠右）；
+   flex-shrink:0 保证格子窄时不被农历挤扁，农历自身负责 ellipsis */
+.gc-month-view__day-cell .gc-month-view__task-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	margin-left: auto;
+	min-width: 16px;
+	height: 16px;
+	padding: 0 5px;
+	font-size: 10px;
+	font-weight: 700;
+	line-height: 1;
+	color: var(--gc-color-red, #ef4444);
+	background-color: color-mix(in srgb, var(--gc-color-blue, #3884ff) 18%, var(--background-primary));
+	border-radius: var(--gc-radius-full);
+	box-sizing: border-box;
+}
+
 /* 今天：accent 淡染 + 数字反白徽标 */
 .gc-month-view__day-cell--today {
 	background-color: color-mix(in srgb, var(--gc-accent) 6%, var(--background-primary));
@@ -160,7 +186,49 @@
 	width: 100%;
 	margin-top: 2px;
 	flex: 1;
+	/* min-height:0 必须显式声明：flex 子项默认 min-height:auto 会被内容撑高，
+	   导致 overflow-y:auto 永远不触发滚动（内容溢出到格子外被 cell 裁掉） */
+	min-height: 0;
 	overflow: hidden;
+}
+
+/* 日期格任务列表：内容溢出时可滚动查看全部（隐藏原生滚动条，改用右侧只读细条） */
+.gc-month-view__tasks--scrollable {
+	overflow-y: auto;
+	overflow-x: hidden;
+	/* 隐藏原生滚动条（Firefox / WebKit / Chromium） */
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+	/* 保证 flex 收缩到底后由滚动接管，而不是被内容撑高 */
+	min-height: 0;
+	overscroll-behavior: contain;
+}
+
+.gc-month-view__tasks--scrollable::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+}
+
+/* 只读细滚动条轨道：贴右边缘，不占布局（绝对定位） */
+.gc-month-view__scroll-track {
+	position: absolute;
+	top: 30px;
+	right: 1px;
+	bottom: 1px;
+	width: 3px;
+	pointer-events: none;
+	z-index: 2;
+}
+
+/* 滑块：极小宽度，仅指示位置，不可拖拽（pointer-events: none） */
+.gc-month-view__scroll-thumb {
+	display: none;
+	width: 3px;
+	min-height: 8px;
+	border-radius: 2px;
+	background-color: color-mix(in srgb, var(--text-muted) 45%, transparent);
+	pointer-events: none;
+	will-change: transform;
 }
 
 /* 格内任务药丸：timeline 变体在月视图的适配——去边框去色条，灰底精简（与横跨条一致） */

@@ -20,12 +20,11 @@ describe('taskSerializer round-trip', () => {
     // ===== Tasks 格式 =====
 
     it('tasks: 完整任务行保留所有字段', () => {
-        const line = '- [ ] 开发任务 ⏫ 🛫 2026-08-20 09:30 📅 2026-08-25 18:00 📋 2026-08-19';
+        const line = '- [ ] 开发任务 🛫 2026-08-20 09:30 📅 2026-08-25 18:00 📋 2026-08-19';
         const result = roundTrip(line, 'tasks');
         expect(result).toContain('🛫 2026-08-20 09:30');
         expect(result).toContain('📅 2026-08-25 18:00');
         expect(result).toContain('📋 2026-08-19');
-        expect(result).toContain('⏫');
     });
 
     it('tasks: 标签在描述中不丢失', () => {
@@ -36,17 +35,20 @@ describe('taskSerializer round-trip', () => {
         expect(result).toContain('写报告');
     });
 
-    it('tasks: 完成状态与日期', () => {
+    it('tasks: 完成日期已随重构移除（不再写回 ✅）', () => {
         const line = '- [x] 已完成任务 ✅ 2026-08-20 📅 2026-08-25';
         const result = roundTrip(line, 'tasks');
-        expect(result).toContain('✅ 2026-08-20');
+        // ✅ 完成日期字段已移除：不再解析也不写回，但仍不应破坏其它字段
+        expect(result).not.toContain('✅');
         expect(result).toContain('📅 2026-08-25');
     });
 
-    it('tasks: 优先级 emoji 保留', () => {
+    it('tasks: 优先级 emoji 不再写回（优先级功能已移除）', () => {
         const line = '- [ ] 低优先级 🔽 📅 2026-08-25';
         const result = roundTrip(line, 'tasks');
-        expect(result).toContain('🔽');
+        // 优先级功能已整体移除：emoji 不再被识别，写回时也不输出
+        expect(result).not.toContain('🔽');
+        expect(result).toContain('📅 2026-08-25');
     });
 
     it('tasks: 周期任务规则保留', () => {
@@ -62,19 +64,32 @@ describe('taskSerializer round-trip', () => {
     });
 
     it('tasks: 复选框状态符号不同', () => {
-        const line = '- [!] 紧急任务 🔺 📅 2026-08-25';
+        const line = '- [!] 紧急任务 📅 2026-08-25';
         const result = roundTrip(line, 'tasks');
-        expect(result).toContain('🔺');
+        expect(result).toContain('📅 2026-08-25');
+    });
+
+    it('tasks: status 传空串 → 复选框写回空格 [ ]（取消状态选择）', () => {
+        const line = '- [!] 紧急任务 📅 2026-08-25';
+        const parsed = parseSingleTaskLine(line, 'notes/p.md', 'p.md', 1, ['tasks']);
+        expect(parsed).not.toBeNull();
+        // 显式取消状态：updates.status = ''
+        const serialized = serializeTask(appWithPlugins, parsed!, { status: '' }, 'tasks');
+        // 复选框回到空格（无状态色），不再保留原 [!]
+        expect(serialized.startsWith('[ ]')).toBe(true);
+        expect(serialized).not.toContain('[!]');
+        // 描述与其它字段不受影响
+        expect(serialized).toContain('紧急任务');
+        expect(serialized).toContain('📅 2026-08-25');
     });
 
     // ===== Dataview 格式 =====
 
     it('dataview: 字段在方括号内', () => {
-        const line = '- [ ] 开发任务 [start:: 2026-08-20] [due:: 2026-08-25] [priority:: high]';
+        const line = '- [ ] 开发任务 [start:: 2026-08-20] [due:: 2026-08-25]';
         const result = roundTrip(line, 'dataview');
         expect(result).toContain('[start:: 2026-08-20]');
         expect(result).toContain('[due:: 2026-08-25]');
-        expect(result).toContain('[priority:: high]');
     });
 
     it('dataview: 时间字段保留', () => {
@@ -105,13 +120,12 @@ describe('taskSerializer round-trip', () => {
     // ===== 边界情况 =====
 
     it('round-trip 两次应得到相同结果', () => {
-        const line = '- [ ] 稳定任务 ⏫ 🛫 2026-08-20 📅 2026-08-25 #work';
+        const line = '- [ ] 稳定任务 🛫 2026-08-20 📅 2026-08-25 #work';
         const parsed = parseSingleTaskLine(line, 'notes/p.md', 'p.md', 1, ['tasks']);
         expect(parsed).not.toBeNull();
         const serialized = serializeTask(appWithPlugins, parsed!, {}, 'tasks');
         // 验证序列化包含预期字段
         expect(serialized).toContain('稳定任务');
-        expect(serialized).toContain('⏫');
         expect(serialized).toContain('🛫 2026-08-20');
         expect(serialized).toContain('📅 2026-08-25');
     });
