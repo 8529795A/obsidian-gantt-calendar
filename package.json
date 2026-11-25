@@ -1,7 +1,7 @@
 {
 	"name": "gantt-calendar",
 	"version": "1.6.2",
-	"description": "A powerful visual task management plugin. Visualize and manage tasks created by the Tasks plugin, supporting both emoji and Dataview task formats. Support Feishu Task syncing. Support Gantt chart and calendar views.",
+	"description": "A powerful visual task management plugin for Obsidian. Visualize and manage tasks from the Tasks plugin or Dataview inline fields, with Year / Month / Week / Day / Task / Gantt views and a continuous timeline canvas.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",

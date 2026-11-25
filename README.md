@@ -12,7 +12,7 @@ A powerful visual task management plugin for Obsidian.
 
 **Data Visualization** — Task heatmap, daily task counts, 8 gradient palettes
 
-**Smart Task Management** — Global filter, priority tags, 6 date fields, time precision (HH:mm), smart write-back with line drift protection
+**Smart Task Management** — Global filter, colour-label statuses, 4 date fields, time precision (HH:mm), task details (multi-line notes under the task line), smart write-back with line drift protection
 
 **Timeline Canvas** — Continuous minute-positioned timeline in Week/Day/Sidebar views: click-to-create, edge resize (15-min snap), WYSIWYG drag with landing preview
 
@@ -29,8 +29,6 @@ A powerful visual task management plugin for Obsidian.
 **Dual Format** — Full support for Tasks plugin (emoji) and Dataview plugin (inline field) formats
 
 **Recurring Tasks** — daily/weekly/monthly/yearly repeat with virtual instances shown across all views (Year/Month/Week/Day/Task/Gantt)
-
-**Feishu Sync** — Bidirectional task sync with Feishu (Lark) via OAuth 2.0
 
 </div>
 
@@ -80,7 +78,6 @@ Day View with Embedded Editor
 | Platform | Desktop **and** mobile (`isDesktopOnly: false`) |
 | Optional | [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) and/or [Dataview](https://github.com/blacksmithgu/obsidian-dataview) — the plugin parses both formats natively; installing them is **not** required |
 | Optional | Obsidian core **Daily Notes** or the **Periodic Notes** community plugin, for the Day View embedded editor |
-| Optional | A Feishu (Lark) account and a self-built Feishu app, for task sync |
 
 > The plugin **only reads and writes standard Markdown task lines**. Your notes stay plain text — uninstalling it leaves your vault fully intact.
 
@@ -138,7 +135,6 @@ Use the **view switcher** on the left of the toolbar to move between the six vie
 | `Gantt Calendar: Open Calendar View` | Opens the main view, switched to **Month** |
 | `Gantt Calendar: Open Task View` | Opens the main view, switched to **Task** |
 | `Gantt Calendar: Open Sidebar` | Opens the right-sidebar view |
-| `Gantt Calendar: Feishu Task Bidirectional Sync` | Runs one Feishu sync immediately |
 
 All commands are available in the command palette and can be bound to hotkeys.
 
@@ -174,7 +170,7 @@ Add a time to the minute and the task lands on the timeline canvas:
 | Click empty canvas | Week / Day / Sidebar | Creates a task at that time (15-min snap) |
 | Drag a block's top/bottom edge | Week / Day / Sidebar | Adjusts start/end; hold <kbd>Alt</kbd> for 5-min precision |
 | Drag a Gantt bar / endpoint | Gantt | Shifts dates, or changes the progress percentage |
-| Right-click any task | Everywhere | Edit / set priority / postpone / cancel / delete |
+| Right-click any task | Everywhere | Edit / set status / postpone / delete |
 | Click a task | Configurable | Jumps to the source file, or opens the edit panel |
 
 ### 5. Wire up Daily Notes (Day View)
@@ -190,31 +186,27 @@ Alternatively, switch off that toggle and set the folder / filename format / tem
 ### Tasks plugin format (emoji)
 
 ```markdown
-- [ ] 🎯 Complete project documentation ⏫ ➕ 2025-01-10 🛫 2025-01-12 ⏳ 2025-01-14 📅 2025-01-15 #work
+- [ ] 🎯 Complete project documentation ➕ 2025-01-10 🛫 2025-01-12 ⏳ 2025-01-14 📅 2025-01-15 #work
 ```
 
 | Emoji | Meaning | Emoji | Meaning |
 |-------|---------|-------|---------|
-| `🎯` | Global filter marker | `🔺` | Highest priority |
-| `⏫` | High priority | `🔼` | Medium priority |
-| `🔽` | Low priority | `⏬` | Lowest priority |
-| `➕` | Created date | `🛫` | Start date |
-| `⏳` | Scheduled date | `📅` | Due date |
-| `✅` | Completion date | `❌` | Cancelled date |
-| `🔁` | Recurring task | `#tag` | Tag |
+| `🎯` | Global filter marker | `➕` | Created date |
+| `🛫` | Start date | `⏳` | Scheduled date |
+| `📅` | Due date | `🔁` | Recurring task |
+| `#tag` | Tag | — | — |
 
 ### Dataview plugin format (inline fields)
 
 ```markdown
-- [ ] 🎯 Complete project documentation [priority:: high] [created:: 2025-01-10] [start:: 2025-01-12] [scheduled:: 2025-01-14] [due:: 2025-01-15] #work
+- [ ] 🎯 Complete project documentation [created:: 2025-01-10] [start:: 2025-01-12] [scheduled:: 2025-01-14] [due:: 2025-01-15] #work
 ```
 
 | Field | Meaning | Field | Meaning |
 |-------|---------|-------|---------|
-| `priority::` | Priority | `created::` | Created date |
-| `start::` | Start date | `scheduled::` | Scheduled date |
-| `due::` | Due date | `completion::` | Completion date |
-| `cancelled::` | Cancelled date | `repeat::` | Recurrence rule |
+| `created::` | Created date | `start::` | Start date |
+| `scheduled::` | Scheduled date | `due::` | Due date |
+| `repeat::` | Recurrence rule | — | — |
 
 Which formats are parsed is configurable — **Tasks only**, **Dataview only**, or **Both** (default).
 
@@ -227,16 +219,31 @@ Timed tasks render as positioned blocks on the Week / Day / Sidebar timeline can
 
 ### Task statuses
 
-The checkbox character drives the status. Built-in statuses:
+Statuses are **pure colour labels** — the checkbox character decides the colour of a task card/block. It carries **no completion semantics** (there is no done/cancelled state, no checkbox UI, no progress bar).
 
 | Symbol | Status | Symbol | Status |
 |--------|--------|--------|--------|
-| ` ` | Todo | `x` / `X` | Done |
 | `!` | Important | `-` | Cancelled |
 | `/` | In progress | `?` | Question |
-| `>` | Started | — | — |
+| `n` | Started | — | — |
 
-Custom statuses can be added in **Settings → Gantt Calendar → Tasks → Task status**, each with its own symbol, colours, and description.
+`[ ]` (space) means **no status** — the card uses its default background. Statuses are fully equal: add, edit, recolour or delete any of them in **Settings → Gantt Calendar → Tasks → Task status**, each with its own symbol, light/dark colours and description.
+
+### Task details
+
+Any indented (or lazily continued) lines **below** a task line belong to that task and are shown/edited as its **details**:
+
+```markdown
+- [ ] 🎯 Fix the release script 🛫 2026-01-10 09:00 📅 2026-01-10 11:00
+	==Repro: `npm run build` fails on a clean clone==
+	Steps:
+	1. rm -rf node_modules
+	2. npm ci
+```
+
+- The **Task Title** and **Task Details** are separate fields in the edit dialog.
+- Details keep your Obsidian formatting 1:1 — `==highlight==`, Tab indentation and nested lists are preserved verbatim.
+- The hover tooltip shows up to 4 detail lines under the title, then collapses to “and N more line(s)”.
 
 ### Recurring tasks
 
@@ -346,7 +353,7 @@ On mobile the toolbar is replaced by a floating **Navigation Dock** — one-thum
 - **Task List** — Centralized display of all tasks
 - **Date Range Filter** — All / Today / This Week / This Month / Custom range
 - **Time Field Selector** — Filter by any of 6 date fields
-- **Multi-dimensional Filtering** — Status, priority, and tags (AND/OR/NOT operators)
+- **Multi-dimensional Filtering** — Status and tags (AND/OR/NOT operators)
 - **Sorting** — 7 sort fields with asc/desc toggle
 - **Persistent State** — Filter and sort settings persist across refreshes
 - **Recurring Tasks** — Virtual instances for repeating tasks are expanded and sorted by date
@@ -370,8 +377,8 @@ Two-tab sidebar for quick task access:
 
 **Task List Tab**
 - Keyword search (debounced)
-- Multi-dimensional filters: status, priority, tags (OR/AND), date range
-- Sort by: priority / due date / start date
+- Multi-dimensional filters: status, tags (OR/AND), date range
+- Sort by: due date / start date
 - Click a task card to jump to the source file or open the edit panel (Settings → General → Task Card Click)
 
 **Daily Timeline Tab**
@@ -386,47 +393,17 @@ Two-tab sidebar for quick task access:
 
 Right-click any task for:
 
-- **Edit Task** — Full edit modal (description, priority, dates, repeat, tags)
+- **Edit Task** — Full edit modal (title, details, status, dates, repeat, tags)
 - **Create Note** — Generate a wiki-linked note from the task (same name or alias)
-- **Set Priority** — 6 levels: highest / high / medium / normal / low / lowest
-- **Set Status** — Custom statuses (important, question)
+- **Set Status** — Every configured status, with a colour dot and a check mark on the current one
 - **Postpone** — Delay 1/3/7 days (from due date or from today)
-- **Cancel / Restore** — Toggle cancelled state
 - **Delete** — Remove task from markdown file
-
-### Feishu (Lark) Sync
-
-- **Bidirectional Sync** — Push local tasks to Feishu and pull Feishu tasks to Obsidian
-- **OAuth 2.0** — Secure authentication with automatic token refresh
-- **Push Filters** — Filter by file paths, completion status, and date
-- **Conflict Resolution** — Multiple strategies: local-wins, remote-wins, newest-wins, manual
-- **Auto Sync** — Configurable automatic sync interval
-- **Sync Result Modal** — Detailed per-task sync results with statistics
-
-> ⚠️ **Back up your vault before enabling sync.** The sync engine is under active development and pushes/pulls write directly into your Markdown files.
-
-<details>
-<summary><b>Setting up Feishu sync (click to expand)</b></summary>
-
-1. Create a self-built app at <https://open.feishu.cn/app> and note its **App ID** and **App Secret**.
-2. Under **Permissions & Scopes**, grant:
-   `offline_access`, `calendar:calendar:readonly`, `task:task:read`, `task:task:write`, `task:tasklist:read`, `task:tasklist:write`
-3. Under **Security Settings → Redirect URL**, add the callback used by the plugin:
-   `https://open.feishu.cn/api-explorer/loading`
-4. Publish a version of the app and have it approved.
-5. In Obsidian, open **Settings → Gantt Calendar → Sync**, paste the App ID / App Secret, click **Authorize**, finish the flow in your browser, then paste the `code` parameter from the callback URL back into the plugin.
-6. Click **Fetch task lists**, then pick the list that should act as the sync target.
-7. Choose **Sync direction** (`bidirectional` / `import-only` / `export-only`), **Conflict resolution**, and optionally an **Auto sync interval** (minutes; `0` disables it).
-8. Run `Gantt Calendar: Feishu Task Bidirectional Sync`, or press **Sync now** in settings.
-
-Use **Test sync** to push/pull only the 5 tasks with the nearest due dates — a safe way to verify the connection before a full run.
-</details>
 
 ---
 
 ## Settings Reference
 
-Settings live under **Settings → Gantt Calendar**, organised into five tabs.
+Settings live under **Settings → Gantt Calendar**, organised into four tabs.
 
 ### General
 
@@ -448,7 +425,6 @@ Settings live under **Settings → Gantt Calendar**, organised into five tabs.
 | Daily Note folder | Manual mode only — folder holding the daily notes |
 | Daily Note filename format | Manual mode only — e.g. `yyyy-MM-dd` |
 | Daily Note template path | Manual mode only — template used when creating a note (blank = empty file) |
-| Date filter field | Field used by calendar views to place tasks (Task View can switch this per-session) |
 | Week start | Monday or Sunday |
 | Show lunar dates | Lunar text in Year / Month / Week views |
 | Show festivals & solar terms | Coloured highlight markers on lunar text |
@@ -458,23 +434,19 @@ Settings live under **Settings → Gantt Calendar**, organised into five tabs.
 
 | Group | Settings |
 |-------|----------|
-| Day View | Show Daily Note; layout — side-by-side or stacked |
+| Day View | Show Daily Note |
 | Month View | Tasks per day (1–10, also caps spanning-bar lanes); lunar font size (8–18 px) |
 | Year View | Show daily task count; lunar font size; enable heatmap; heatmap palette (8 options); 3D heatmap effect |
-| Gantt | Start field & end field mapping (created / start / scheduled / due / completion / cancelled) |
-| Task card display | Toggle checkbox, tags, priority, and extra content per view (Day / Week / Month / Sidebar) |
+| Gantt | Start field & end field mapping (created / start / scheduled / due) |
+| Task card display | Toggle tags and extra content per view (Day / Week / Month / Task / Sidebar) |
 
 ### Tasks
 
 | Group | Settings |
 |-------|----------|
 | Task basics | **Global filter marker** (e.g. `🎯 `, `TODO `, `#task ` — ⚠ requires restart); enabled formats (Tasks / Dataview / Both); show global filter in task text; task note folder path |
-| Task creation | Target heading for new tasks in the daily note; default priority; recurring instance count |
-| Task status | Default statuses plus custom ones — each with symbol, description, and light/dark colours |
-
-### Sync
-
-See [Setting up Feishu sync](#feishu-lark-sync) above. Key items: task list selection, target file for pulled tasks (default `gantt-calendar-feishu-sync.md`), sync direction, conflict resolution, auto-sync interval, and push filters (paths / completion status / date).
+| Task creation | Target heading for new tasks in the daily note; recurring instance count |
+| Task status | All colour-label statuses — each with symbol, description, and light/dark colours |
 
 ---
 
@@ -507,7 +479,6 @@ Either enable Obsidian's core **Daily Notes** (or **Periodic Notes**) and turn o
 **"Today" is off by an hour.**
 The timezone setting is a fixed UTC offset and does not follow DST. Set it to follow the system, or pick a region without DST.
 
-**Feishu sync says authorization is required / expired.**
 Re-authorize in **Settings → Sync**. Authorization codes expire in ~5 minutes — grab the `code` from the callback URL promptly.
 
 **Sync overwrote my notes.**
@@ -560,7 +531,7 @@ src/
     sidebar/                     SidebarApp + TaskListPanel + DailyTimelinePanel
     components/                  Icon, DropdownMenu, Modal, TooltipProvider,
                                  ContextMenu, TaskCard, Toolbar
-    modals/                      TaskFormModal, ConfirmDialog, SyncResultDialog,
+    modals/                      TaskFormModal, ConfirmDialog,
                                  modalHost (imperative bridge for non-React callers)
     store/calendarStore.ts       zustand store for view state + filters
   data-layer/
@@ -568,11 +539,11 @@ src/
       ├── EventBus               Publish/subscribe
       ├── TaskRepository         In-memory Map cache + file index
       │     └── MarkdownDataSource   Vault scan (batches of 50, metadataCache)
-      └── SyncManager (optional) Multi-source sync orchestration
   tasks/                         Four-step parser + write-back (drift protection)
+                                 taskDetails.ts — detail-block bounds & indentation
   gantt/wrappers/                Custom SVG Gantt renderer
   settings/                      Builder-pattern settings tab
-  commands/                      Command registration (common / conditional / feishu)
+  commands/                      Command registration (common / conditional)
   i18n/                          i18n runtime + en/zh locale JSON
 tests/                           Jest suites (parser steps, drift, recurrence, …)
 ```
@@ -642,7 +613,7 @@ UI strings live in `src/i18n/locales/`. To add a language, copy `en.json`, trans
 - [x] Global filter markers
 - [x] Task tags
 - [x] Task description
-- [x] 6 priority levels
+- [x] Colour-label task statuses
 - [x] 6 date fields with time precision (HH:mm)
 - [x] Recurring task recognition and display
 - [x] Recurring task virtual instances across all views (Year/Month/Week/Day/Task/Gantt)
@@ -664,14 +635,14 @@ UI strings live in `src/i18n/locales/`. To add a language, copy `en.json`, trans
 
 ### Toolbar
 - [x] View switcher
-- [x] Tag / status / priority filtering
+- [x] Tag / status filtering
 - [x] Date navigation buttons
 - [x] Time field selector
 - [x] Add task button
 
 ### Interactions
-- [x] Task cards (description, tags, priority)
-- [x] Context menu (edit, create note, priority, status, postpone, cancel, delete)
+- [x] Task cards (title, details, tags)
+- [x] Context menu (edit, create note, status, postpone, delete)
 - [x] Hover tooltips
 - [x] Quick create on empty time slots
 
